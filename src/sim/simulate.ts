@@ -155,6 +155,10 @@ interface TripOutcome {
   energySpent: number;
   casts: number;
   killTicks: number[];
+  /** Per-encounter combat ticks (summed across all loops). */
+  encTicks: number[];
+  encEnergy: number[];
+  encCasts: number[];
 }
 
 const simulateTrip = (input: SimInput, precomputedSpecs: ({ def: SpecDef, load: Loadout } | null)[], rng: () => number): TripOutcome => {
@@ -170,6 +174,9 @@ const simulateTrip = (input: SimInput, precomputedSpecs: ({ def: SpecDef, load: 
   let energySpent = 0;
   let casts = 0;
   const killTicks: number[] = [];
+  const encTicks = encounters.map(() => 0);
+  const encEnergy = encounters.map(() => 0);
+  const encCasts = encounters.map(() => 0);
 
   const idle = makeAdvance(opts, energy, () => { totalTicks++; });
 
@@ -177,21 +184,26 @@ const simulateTrip = (input: SimInput, precomputedSpecs: ({ def: SpecDef, load: 
     for (let eIdx = 0; eIdx < encounters.length; eIdx++) {
       const enc = encounters[eIdx];
       const isLastEncounterInTrip = (loop === loops - 1) && (eIdx === encounters.length - 1);
-      
+
       // Downtime BEFORE this encounter starts
       if (enc.downtimeTicks > 0) {
         idle(enc.downtimeTicks);
       }
 
+      let eT = 0;
       for (let k = 0; k < enc.count; k++) {
         const isLastKill = isLastEncounterInTrip && (k === enc.count - 1);
         const r = simulateKill(enc, precomputedSpecs[eIdx], opts, rng, energy, isLastKill);
+        eT += r.ticks;
+        encEnergy[eIdx] += r.energySpent;
+        encCasts[eIdx] += r.casts;
         combatTicks += r.ticks;
         totalTicks += r.ticks;
         energySpent += r.energySpent;
         casts += r.casts;
         killTicks.push(r.ticks);
       }
+      encTicks[eIdx] += eT;
     }
   }
 
@@ -201,7 +213,7 @@ const simulateTrip = (input: SimInput, precomputedSpecs: ({ def: SpecDef, load: 
     energy.regenCounter = opts.lightbearer ? REGEN_TICKS / 2 : REGEN_TICKS;
   }
 
-  return { combatTicks, totalTicks, energySpent, casts, killTicks };
+  return { combatTicks, totalTicks, energySpent, casts, killTicks, encTicks, encEnergy, encCasts };
 };
 
 const percentile = (sorted: number[], p: number): number =>
@@ -245,17 +257,47 @@ export const runSim = (input: SimInput): RawResult => {
   let totalEnergy = 0;
   let totalCasts = 0;
 
+  // Per-encounter accumulators (one sample per trial per encounter)
+  const allEncTicks: number[][] = encounters.map(() => []);
+  const encEnergySum = encounters.map(() => 0);
+  const encCastsSum = encounters.map(() => 0);
+
   for (let i = 0; i < trips; i++) {
     const r = simulateTrip(input, precomputedSpecs, rng);
     totalTripTicks += r.totalTicks;
     totalEnergy += r.energySpent;
     totalCasts += r.casts;
     for (const t of r.killTicks) allKillTicks.push(t);
+    for (let eIdx = 0; eIdx < encounters.length; eIdx++) {
+      allEncTicks[eIdx].push(r.encTicks[eIdx]);
+      encEnergySum[eIdx] += r.encEnergy[eIdx];
+      encCastsSum[eIdx] += r.encCasts[eIdx];
+    }
   }
 
   const sorted = [...allKillTicks].sort((a, b) => a - b);
   const meanTicks = allKillTicks.reduce((a, b) => a + b, 0) / allKillTicks.length;
   const meanTripTicks = totalTripTicks / trips;
+
+  const breakdown = encounters.map((enc, eIdx) => {
+    const sortedE = [...allEncTicks[eIdx]].sort((a, b) => a - b);
+    const meanE = sortedE.reduce((a, b) => a + b, 0) / Math.max(1, sortedE.length);
+    const kps = enc.count * loops;
+    return {
+      meanTicks: meanE,
+      medianTicks: percentile(sortedE, 0.5),
+      p90Ticks: percentile(sortedE, 0.9),
+      meanSeconds: meanE * 0.6,
+      tripSeconds: meanE * 0.6,
+      energyUsed: kps > 0 ? (encEnergySum[eIdx] / trips / kps) : 0,
+      meanSpecCasts: encCastsSum[eIdx] / trips,
+      hist: histogram(allEncTicks[eIdx]),
+      // secondsSaved will be filled in by compareSpecs
+      secondsSaved: 0,
+      tripSecondsSaved: 0,
+      secondsPer100Energy: 0,
+    };
+  });
 
   return {
     specId: specId,
@@ -268,6 +310,7 @@ export const runSim = (input: SimInput): RawResult => {
     energyUsed: totalKillsPerTrip > 0 ? (totalEnergy / trips / totalKillsPerTrip) : 0,
     meanSpecCasts: totalCasts / trips,
     hist: histogram(allKillTicks),
+    breakdown,
   };
 };
 
@@ -285,17 +328,32 @@ export const compareSpecs = (
   const rows: SpecResult[] = specIds.map((specId) => {
     const r = runSim({ encounters, specId, opts });
     const secondsSaved = baseline.meanSeconds - r.meanSeconds;
+
+    // Fill in per-encounter secondsSaved by comparing against baseline breakdown
+    const breakdown = r.breakdown?.map((bd, i) => {
+      const bBase = baseline.breakdown?.[i];
+      const bSaved = bBase ? bBase.meanSeconds - bd.meanSeconds : 0;
+      return {
+        ...bd,
+        secondsSaved: bSaved,
+        tripSecondsSaved: bSaved, // per-encounter trip = same as meanSeconds diff
+        secondsPer100Energy: bd.energyUsed > 0 ? (bSaved / bd.energyUsed) * 100 : 0,
+      };
+    });
+
     return {
       ...r,
       secondsSaved,
       tripSecondsSaved: baseline.tripSeconds - r.tripSeconds,
       // Efficiency: how much time each 100% of spec energy actually buys you.
       secondsPer100Energy: r.energyUsed > 0 ? (secondsSaved / r.energyUsed) * 100 : 0,
+      breakdown,
     };
   });
 
   rows.sort((a, b) => b.secondsSaved - a.secondsSaved);
 
+  // Baseline row: breakdown secondsSaved stay 0 (already set in runSim)
   return [
     { ...baseline, secondsSaved: 0, tripSecondsSaved: 0, secondsPer100Energy: 0 },
     ...rows,
