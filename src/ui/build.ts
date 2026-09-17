@@ -127,7 +127,6 @@ export const buildMain = (setup: SetupInput, monster: Monster | null): Loadout =
     // Let me check OSRS twisted bow formula exactly.
     // Acc multiplier: 140 + (3 * magic - 10) / 100 ? No!
     // The exact TBow formula:
-    const accMult = 140 + Math.trunc((3 * m - 10) / 100) - Math.trunc(Math.pow(3 * m / 10 - 100, 2) / 100);
     // Wait, let's use the standard simplified wiki formula:
     // Accuracy = 140 + trunc((3*m - 10)/100) - trunc((3*m/10 - 100)^2 / 100)  -- no, the wiki formula is:
     // Accuracy: 140 + (3 * m - 10) / 100 - ((3 * m / 10) - 100)^2 / 100 ?
@@ -276,3 +275,4 @@ export const buildSpecCandidates = (
       load: buildSpecLoadout(setup, def, weapon, monster, switches[def.id]),
     }];
   });
+
