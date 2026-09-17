@@ -18,14 +18,29 @@ import type { SpecSwitches } from './setups';
 const VERSION = '1';
 const SEP = '|';
 
-export interface ShareableSetup {
-  monsterQuery: string;
+export interface TabState {
   gear: GearSet;
-  levels: CombatLevels;
   prayerKey: string;
   styleIndex: number;
   potionId: string;
   spellName: string;
+}
+
+export type TabKind = 'melee' | 'ranged' | 'magic';
+
+export interface ShareableSetup {
+  monsterQuery: string;
+  
+  tabs?: Record<TabKind, TabState>;
+  activeTab?: TabKind;
+  lockedSlots?: Slot[];
+
+  gear?: GearSet;
+  levels: CombatLevels;
+  prayerKey?: string;
+  styleIndex?: number;
+  potionId?: string;
+  spellName?: string;
   buffs: Buffs;
   switches: SpecSwitches;
   enabledSpecs: string[];
@@ -54,8 +69,11 @@ export const encodeSetup = (setup: ShareableSetup, equipment: Equip[]): string =
     ?? equipment.find((e) => e.name === name)?.id
     ?? '';
 
+  const active = setup.tabs && setup.activeTab ? setup.tabs[setup.activeTab] : setup;
+  const { gear, prayerKey, styleIndex, potionId, spellName } = active;
+
   // Item ids in base36 - roughly a third shorter than decimal.
-  const gear = SLOTS.map((slot) => setup.gear[slot]?.id.toString(36) ?? '').join(',');
+  const gearRaw = SLOTS.map((slot) => gear![slot]?.id.toString(36) ?? '').join(',');
 
   const levels = [
     setup.levels.attack, setup.levels.strength, setup.levels.ranged, setup.levels.magic,
@@ -90,12 +108,12 @@ export const encodeSetup = (setup: ShareableSetup, equipment: Equip[]): string =
   return toBase64Url([
     VERSION,
     setup.monsterQuery,
-    gear,
+    gearRaw,
     levels,
-    setup.prayerKey,
-    String(setup.styleIndex),
-    setup.potionId,
-    setup.spellName,
+    prayerKey ?? 'none',
+    String(styleIndex ?? 0),
+    potionId ?? 'none',
+    spellName ?? '',
     setup.buffs.offTask ? '1' : '0',
     disabled,
     optionOverrides,

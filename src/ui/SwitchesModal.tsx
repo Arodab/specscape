@@ -11,10 +11,13 @@ export interface SwitchPreview {
   hitChance: number;
 }
 
+import type { TabKind } from './session';
+
 interface Props {
   spec: SpecDef;
   /** The main setup's gear, used as the starting point for the swap. */
   baseGear: GearSet;
+  tabs: Record<TabKind, { gear: GearSet }>;
   /** The weapon the spec forces into the weapon slot. */
   specWeapon: Equip | null;
   overrides: Partial<Record<Slot, ItemRef | null>>;
@@ -36,7 +39,7 @@ interface Props {
  * and the grid lets you bring the pieces you would actually swap.
  */
 export default function SwitchesModal({
-  spec, baseGear, specWeapon, overrides, itemsBySlot, equipment, preview,
+  spec, baseGear, tabs, specWeapon, overrides, itemsBySlot, equipment, preview,
   targetAttributes, onChange, onClose,
 }: Props) {
   const [draft, setDraft] = useState(overrides);
@@ -68,6 +71,20 @@ export default function SwitchesModal({
   const setSlot = (slot: Slot, item: Equip | null) => {
     if (slot === 'weapon') return; // the spec weapon defines this slot
     setDraft((d) => ({ ...d, [slot]: item ? toRef(item) : null }));
+  };
+
+  const applyTab = (tabKind: TabKind) => {
+    const targetGear = tabs[tabKind].gear;
+    const newOverrides: Partial<Record<Slot, ItemRef | null>> = {};
+    for (const slot of SLOTS) {
+      if (slot === 'weapon') continue;
+      const targetItem = targetGear[slot];
+      const baseItem = baseGear[slot];
+      if (targetItem?.id !== baseItem?.id || targetItem?.version !== baseItem?.version) {
+        newOverrides[slot] = targetItem ? toRef(targetItem) : null;
+      }
+    }
+    setDraft(newOverrides);
   };
 
   const apply = () => { onChange(draft); onClose(); };
@@ -117,6 +134,13 @@ export default function SwitchesModal({
               <div className="fact">{changedSlots.length} slot(s) overridden</div>
             )}
           </div>
+        </div>
+
+        <div className="switch-tabs-pull" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+          <span style={{ fontSize: '12px', color: 'var(--muted)', alignSelf: 'center' }}>Pull from tab:</span>
+          <button className="mini" onClick={() => applyTab('melee')}>Melee</button>
+          <button className="mini" onClick={() => applyTab('ranged')}>Ranged</button>
+          <button className="mini" onClick={() => applyTab('magic')}>Magic</button>
         </div>
 
         <footer className="modal-foot">

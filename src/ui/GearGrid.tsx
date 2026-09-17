@@ -174,6 +174,9 @@ interface GearGridProps {
   onChange: (slot: Slot, item: Equip | null) => void;
   /** Slots the caller does not want editable (e.g. the spec weapon itself). */
   lockedSlots?: Slot[];
+  /** Slots locked across tabs */
+  sharedSlots?: Set<Slot>;
+  onToggleShared?: (slot: Slot) => void;
   /** Slots visually marked as overridden, used by the spec switches editor. */
   highlightSlots?: Slot[];
   /** Attack type of the current style, used to pick a sensible default sort. */
@@ -183,7 +186,7 @@ interface GearGridProps {
 }
 
 export default function GearGrid({
-  gear, itemsBySlot, onChange, lockedSlots = [], highlightSlots = [],
+  gear, itemsBySlot, onChange, lockedSlots = [], sharedSlots, onToggleShared, highlightSlots = [],
   attackType = 'melee', targetAttributes = [],
 }: GearGridProps) {
   const [editing, setEditing] = useState<Slot | null>(null);
@@ -195,20 +198,32 @@ export default function GearGrid({
           if (!slot) return <div key={`gap-${i}`} className="gear-gap" />;
           const item = gear[slot] ?? null;
           const locked = lockedSlots.includes(slot);
+          const shared = sharedSlots?.has(slot) ?? false;
           const highlighted = highlightSlots.includes(slot);
           return (
-            <button
-              key={slot}
-              type="button"
-              className={`gear-slot${item ? ' filled' : ''}${locked ? ' locked' : ''}${highlighted ? ' overridden' : ''}`}
-              title={item ? itemLabel(item) : slot}
-              disabled={locked}
-              onClick={() => setEditing(slot)}
-            >
-              {item
-                ? <ItemIcon item={item} size={30} />
-                : <span className="gear-slot-label">{slot}</span>}
-            </button>
+            <div key={slot} className="gear-slot-wrapper">
+              <button
+                type="button"
+                className={`gear-slot${item ? ' filled' : ''}${locked ? ' locked' : ''}${highlighted ? ' overridden' : ''}`}
+                title={item ? itemLabel(item) : slot}
+                disabled={locked}
+                onClick={() => setEditing(slot)}
+              >
+                {item
+                  ? <ItemIcon item={item} size={30} />
+                  : <span className="gear-slot-label">{slot}</span>}
+              </button>
+              {onToggleShared && (
+                <button
+                  type="button"
+                  className={`shared-toggle ${shared ? 'is-shared' : ''}`}
+                  onClick={() => onToggleShared(slot)}
+                  title={shared ? "Shared across tabs (click to unshare)" : "Specific to this tab (click to share)"}
+                >
+                  {shared ? '🔒' : '🔓'}
+                </button>
+              )}
+            </div>
           );
         })}
       </div>

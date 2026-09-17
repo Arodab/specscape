@@ -21,17 +21,32 @@ export interface ItemRef {
 /** Per-spec gear overrides, e.g. putting ruby bolts on for the Zaryte crossbow. */
 export type SpecSwitches = Record<string, Partial<Record<Slot, ItemRef | null>>>;
 
+export interface TabStateRaw {
+  gear: Partial<Record<Slot, ItemRef>>;
+  presetId?: string; // setups historically didn't save presetId, but we might want it.
+  prayerKey: string;
+  styleIndex: number;
+  potionId: string;
+  spellName: string;
+}
+
+export type TabKind = 'melee' | 'ranged' | 'magic';
+
 export interface SavedSetup {
   name: string;
   savedAt: string;
-  gear: Partial<Record<Slot, ItemRef>>;
+  
+  tabs?: Record<TabKind, TabStateRaw>;
+  activeTab?: TabKind;
+  lockedSlots?: Slot[];
+
+  gear?: Partial<Record<Slot, ItemRef>>;
+  prayerKey?: string;
+  styleIndex?: number;
+  potionId?: string;
+  spellName?: string;
+
   levels: CombatLevels;
-  prayerKey: string;
-  /** Index into the equipped weapon's own style list. */
-  styleIndex: number;
-  potionId: string;
-  /** Autocast spell name, empty when not casting from a spellbook. */
-  spellName: string;
   buffs: Buffs;
   switches: SpecSwitches;
 }
@@ -131,7 +146,10 @@ export const parseSetupsFile = (text: string): SavedSetup[] => {
   const arr = Array.isArray(parsed) ? parsed : [parsed];
   return arr.filter(
     (s): s is SavedSetup =>
-      !!s && typeof s.name === 'string' && typeof s.gear === 'object' && s.gear !== null,
+      !!s && typeof s.name === 'string' && (
+        (typeof s.gear === 'object' && s.gear !== null) ||
+        (typeof s.tabs === 'object' && s.tabs !== null)
+      ),
   );
 };
 

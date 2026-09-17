@@ -17,15 +17,32 @@ const KEY = 'specscape.session.v1';
 export const DEFAULT_MONSTER = 'Vorkath (Post-quest)';
 export const DEFAULT_PRESET = 'max_melee_fang';
 
-export interface SessionState {
-  monsterQuery: string;
+export interface TabStateRaw {
   gear: Partial<Record<Slot, ItemRef>>;
   presetId: string;
-  levels: CombatLevels;
   prayerKey: string;
   styleIndex: number;
   potionId: string;
   spellName: string;
+}
+
+export type TabKind = 'melee' | 'ranged' | 'magic';
+
+export interface SessionState {
+  monsterQuery: string;
+  
+  tabs?: Record<TabKind, TabStateRaw>;
+  activeTab?: TabKind;
+  lockedSlots?: Slot[];
+
+  gear?: Partial<Record<Slot, ItemRef>>;
+  presetId?: string;
+  prayerKey?: string;
+  styleIndex?: number;
+  potionId?: string;
+  spellName?: string;
+
+  levels: CombatLevels;
   buffs: Buffs;
   switches: SpecSwitches;
   enabledSpecs: string[];

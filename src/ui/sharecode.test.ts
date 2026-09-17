@@ -63,10 +63,11 @@ describe('share codes', () => {
 
   it('restores gear and spec switches by item', () => {
     const decoded = decodeSetup(encodeSetup(sample(), equipment), equipment)!;
-    expect(decoded.gear.weapon?.name).toBe("Osmumten's fang");
-    expect(decoded.gear.head?.name).toBe('Torva full helm');
-    expect(decoded.gear.body?.name).toBe('Oathplate chest');
-    expect(decoded.gear.cape).toBeUndefined();
+    const g = decoded.gear || decoded.tabs?.melee?.gear || {};
+    expect(g.weapon?.name).toBe("Osmumten's fang");
+    expect(g.head?.name).toBe('Torva full helm');
+    expect(g.body?.name).toBe('Oathplate chest');
+    expect(g.cape).toBeUndefined();
     expect(decoded.switches.zcb?.neck?.name).toBe('Necklace of rupture');
   });
 

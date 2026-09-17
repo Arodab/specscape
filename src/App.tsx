@@ -48,13 +48,18 @@ export default function App() {
   const [dataError, setDataError] = useState<string | null>(null);
 
   const [monsterQuery, setMonsterQuery] = useState(DEFAULT_MONSTER);
-  const [gear, setGear] = useState<GearSet>({});
-  const [presetId, setPresetId] = useState(DEFAULT_PRESET);
+  const [activeTab, setActiveTab] = useState<'melee' | 'ranged' | 'magic'>('melee');
+  const [tabs, setTabs] = useState<Record<'melee' | 'ranged' | 'magic', { gear: GearSet, presetId: string, prayerKey: string, styleIndex: number, potionId: string, spellName: string }>>({
+    melee: { gear: {}, presetId: DEFAULT_PRESET, prayerKey: 'piety', styleIndex: 0, potionId: 'super_combat', spellName: '' },
+    ranged: { gear: {}, presetId: DEFAULT_PRESET, prayerKey: 'rigour', styleIndex: 0, potionId: 'ranging', spellName: '' },
+    magic: { gear: {}, presetId: DEFAULT_PRESET, prayerKey: 'augury', styleIndex: 0, potionId: 'imbued_heart', spellName: '' },
+  });
+  const [sharedSlots, setSharedSlots] = useState<Set<Slot>>(new Set());
+  const [filterSpecs, setFilterSpecs] = useState(false);
+
+  const { gear, presetId, prayerKey, styleIndex, potionId, spellName } = tabs[activeTab];
+
   const [levels, setLevels] = useState({ attack: 99, strength: 99, ranged: 99, magic: 99 });
-  const [prayerKey, setPrayerKey] = useState('piety');
-  const [styleIndex, setStyleIndex] = useState(0);
-  const [potionId, setPotionId] = useState('super_combat');
-  const [spellName, setSpellName] = useState<string>('');
   const [buffs, setBuffs] = useState<Buffs>(DEFAULT_BUFFS);
   const [specOptions, setSpecOptions] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(
@@ -212,27 +217,33 @@ export default function App() {
   const applyPreset = useCallback((id: string) => {
     const preset = PRESETS.find((p) => p.id === id);
     if (!preset || !equipment.length) return;
-    const next: GearSet = {};
+    const nextGear: GearSet = {};
     for (const [slot, ref] of Object.entries(preset.gear)) {
       if (!ref) continue;
       const { name, version } = parseGearRef(ref);
       const hit = pickVariant(
         equipment.filter((e) => e.name === name && (version === null || e.version === version)),
       );
-      if (hit) next[slot as Slot] = hit;
+      if (hit) nextGear[slot as Slot] = hit;
     }
-    setGear(next);
-    setPresetId(id);
-    setPrayerKey(preset.prayer);
-    setSpellName(preset.spell ?? '');
-    // Resolve the preset's named style against the weapon it just equipped.
-    const nextStyles = stylesFor(next);
-    const idx = nextStyles.findIndex((s) => s.name === preset.styleName);
-    setStyleIndex(idx === -1 ? 0 : idx);
-    setPotionId(
-      preset.type === 'ranged' ? 'ranging' : preset.type === 'magic' ? 'imbued_heart' : 'super_combat',
-    );
-  }, [equipment]);
+    setTabs(all => {
+      const nextStyles = stylesFor(nextGear);
+      const idx = nextStyles.findIndex((s) => s.name === preset.styleName);
+      const t = all[activeTab];
+      return {
+        ...all,
+        [activeTab]: {
+          ...t,
+          gear: nextGear,
+          presetId: id,
+          prayerKey: preset.prayer,
+          spellName: preset.spell ?? '',
+          styleIndex: idx === -1 ? 0 : idx,
+          potionId: preset.type === 'ranged' ? 'ranging' : preset.type === 'magic' ? 'imbued_heart' : 'super_combat',
+        }
+      };
+    });
+  }, [equipment, activeTab]);
 
   /**
    * On first paint, restore where the user left off. Only fall back to the
@@ -244,19 +255,28 @@ export default function App() {
     restored.current = true;
 
     const prev = loadSession();
-    if (!prev || !prev.gear || !Object.keys(prev.gear).length) {
+    if (!prev || (!prev.tabs && (!prev.gear || !Object.keys(prev.gear).length))) {
       applyPreset(DEFAULT_PRESET);
       return;
     }
 
     setMonsterQuery(prev.monsterQuery ?? DEFAULT_MONSTER);
-    setGear(refsToGear(prev.gear, equipment));
-    setPresetId(prev.presetId ?? '');
+    
+    if (prev.tabs && prev.activeTab) {
+      setTabs({
+        melee: { ...prev.tabs.melee, gear: refsToGear(prev.tabs.melee.gear, equipment) },
+        ranged: { ...prev.tabs.ranged, gear: refsToGear(prev.tabs.ranged.gear, equipment) },
+        magic: { ...prev.tabs.magic, gear: refsToGear(prev.tabs.magic.gear, equipment) },
+      });
+      setActiveTab(prev.activeTab);
+      if (prev.lockedSlots) setSharedSlots(new Set(prev.lockedSlots));
+    } else {
+      const g = refsToGear(prev.gear || {}, equipment);
+      const tab = { gear: g, prayerKey: prev.prayerKey || 'none', styleIndex: prev.styleIndex ?? 0, potionId: prev.potionId || 'none', spellName: prev.spellName || '', presetId: prev.presetId || '' };
+      setTabs({ melee: tab, ranged: tab, magic: tab });
+    }
+
     if (prev.levels) setLevels(prev.levels);
-    if (prev.prayerKey) setPrayerKey(prev.prayerKey);
-    if (typeof prev.styleIndex === 'number') setStyleIndex(prev.styleIndex);
-    if (prev.potionId) setPotionId(prev.potionId);
-    setSpellName(prev.spellName ?? '');
     setBuffs(prev.buffs ?? DEFAULT_BUFFS);
     setSwitches(prev.switches ?? {});
     if (prev.enabledSpecs?.length) setEnabled(new Set(prev.enabledSpecs));
@@ -273,19 +293,27 @@ export default function App() {
   // Remember the working configuration for the next visit.
   useEffect(() => {
     if (!restored.current || !equipment.length) return;
+    
+    const tabsRaw = {
+      melee: { ...tabs.melee, gear: gearToRefs(tabs.melee.gear) },
+      ranged: { ...tabs.ranged, gear: gearToRefs(tabs.ranged.gear) },
+      magic: { ...tabs.magic, gear: gearToRefs(tabs.magic.gear) },
+    };
+
     const state: SessionState = {
       monsterQuery,
-      gear: gearToRefs(gear),
-      presetId,
-      levels, prayerKey, styleIndex, potionId, spellName, buffs, switches,
+      tabs: tabsRaw,
+      activeTab,
+      lockedSlots: [...sharedSlots],
+      levels, buffs, switches,
       enabledSpecs: [...enabled],
       startEnergy, trials, kills, downtimeSeconds, bankingSeconds,
       compareLightbearer, setupName,
     };
     saveSession(state);
   }, [
-    equipment.length, monsterQuery, gear, presetId, levels, prayerKey, styleIndex,
-    potionId, spellName, buffs, switches, enabled, startEnergy, trials, kills,
+    equipment.length, monsterQuery, tabs, activeTab, sharedSlots, levels,
+    buffs, switches, enabled, startEnergy, trials, kills,
     downtimeSeconds, bankingSeconds, compareLightbearer, setupName,
   ]);
 
@@ -364,27 +392,60 @@ export default function App() {
 
   // ---- handlers -----------------------------------------------------------
   const setSlot = (slot: Slot, item: Equip | null) => {
-    setGear((g) => {
-      const next = { ...g, [slot]: item };
+    setTabs((allTabs) => {
+      const t = allTabs[activeTab];
+      const nextGear = { ...t.gear, [slot]: item };
+      let nextStyleIndex = t.styleIndex;
       if (slot === 'weapon') {
-        // A new weapon has a different style list, so clamp to its default.
-        const s = stylesFor(next);
-        setStyleIndex(Math.min(styleIndex, s.length - 1));
-
-        // Carry over the ammo only if the new weapon can fire it, otherwise
-        // drop in that weapon's usual ammo instead of leaving it empty.
+        const s = stylesFor(nextGear);
+        nextStyleIndex = Math.min(t.styleIndex, s.length - 1);
         const kind = ammoKindFor(item);
         const allowed = ammoFor(item, itemsBySlot.get('ammo') ?? []);
         if (!kind) {
-          next.ammo = null;
-        } else if (!next.ammo || !allowed.some((a) => a.id === next.ammo?.id)) {
+          nextGear.ammo = null;
+        } else if (!nextGear.ammo || !allowed.some((a) => a.id === nextGear.ammo?.id)) {
           const wanted = DEFAULT_AMMO[kind];
-          next.ammo = allowed.find((a) => a.name === wanted) ?? allowed[0] ?? null;
+          nextGear.ammo = allowed.find((a) => a.name === wanted) ?? allowed[0] ?? null;
         }
+      }
+      const newTabState = { ...t, gear: nextGear, styleIndex: nextStyleIndex, presetId: '' };
+      const nextTabs = { ...allTabs, [activeTab]: newTabState };
+      
+      if (sharedSlots.has(slot)) {
+        for (const k of ['melee', 'ranged', 'magic'] as const) {
+          if (k !== activeTab) {
+            nextTabs[k] = { ...nextTabs[k], gear: { ...nextTabs[k].gear, [slot]: item }, presetId: '' };
+          }
+        }
+      }
+      return nextTabs;
+    });
+  };
+
+  const toggleSharedSlot = (slot: Slot) => {
+    setSharedSlots(prev => {
+      const next = new Set(prev);
+      if (next.has(slot)) {
+        next.delete(slot);
+      } else {
+        next.add(slot);
+        const itemToShare = gear[slot] ?? null;
+        setTabs(t => {
+          const nextTabs = { ...t };
+          for (const k of ['melee', 'ranged', 'magic'] as const) {
+            if (k !== activeTab) {
+              nextTabs[k] = { ...nextTabs[k], gear: { ...nextTabs[k].gear, [slot]: itemToShare }, presetId: '' };
+            }
+          }
+          return nextTabs;
+        });
       }
       return next;
     });
-    setPresetId('');
+  };
+
+  const updateTab = (updates: Partial<typeof tabs['melee']>) => {
+    setTabs(t => ({ ...t, [activeTab]: { ...t[activeTab], ...updates } }));
   };
 
   const toggleSpec = (id: string) => {
@@ -418,11 +479,20 @@ export default function App() {
   const doSave = () => {
     const name = setupName.trim();
     if (!name) { setToast('Give the setup a name first'); return; }
+    
+    const tabsRaw = {
+      melee: { ...tabs.melee, gear: gearToRefs(tabs.melee.gear) },
+      ranged: { ...tabs.ranged, gear: gearToRefs(tabs.ranged.gear) },
+      magic: { ...tabs.magic, gear: gearToRefs(tabs.magic.gear) },
+    };
+    
     setSaved(saveSetup({
       name,
       savedAt: new Date().toISOString(),
-      gear: gearToRefs(gear),
-      levels, prayerKey, styleIndex, potionId, spellName, buffs, switches,
+      tabs: tabsRaw,
+      activeTab,
+      lockedSlots: [...sharedSlots],
+      levels, buffs, switches,
     }));
     setToast(`Saved "${name}"`);
   };
@@ -430,22 +500,31 @@ export default function App() {
   const doLoad = (name: string) => {
     const s = saved.find((x) => x.name === name);
     if (!s) return;
-    setGear(refsToGear(s.gear, equipment));
+    
+    if (s.tabs && s.activeTab) {
+      setTabs({
+        melee: { ...s.tabs.melee, presetId: s.tabs.melee.presetId || '', gear: refsToGear(s.tabs.melee.gear, equipment) },
+        ranged: { ...s.tabs.ranged, presetId: s.tabs.ranged.presetId || '', gear: refsToGear(s.tabs.ranged.gear, equipment) },
+        magic: { ...s.tabs.magic, presetId: s.tabs.magic.presetId || '', gear: refsToGear(s.tabs.magic.gear, equipment) },
+      });
+      setActiveTab(s.activeTab);
+      if (s.lockedSlots) setSharedSlots(new Set(s.lockedSlots));
+    } else {
+      const g = refsToGear(s.gear || {}, equipment);
+      const tab = { gear: g, prayerKey: s.prayerKey || 'none', styleIndex: s.styleIndex ?? 0, potionId: s.potionId || 'none', spellName: s.spellName || '', presetId: '' };
+      setTabs({ melee: tab, ranged: tab, magic: tab });
+    }
+    
     setLevels(s.levels);
-    setPrayerKey(s.prayerKey);
-    setStyleIndex(s.styleIndex ?? 0);
-    setPotionId(s.potionId);
-    setSpellName(s.spellName ?? '');
     setBuffs(s.buffs ?? DEFAULT_BUFFS);
     setSwitches(s.switches ?? {});
     setSetupName(s.name);
-    setPresetId('');
     setToast(`Loaded "${s.name}"`);
   };
 
   const currentShareable = () => ({
-    monsterQuery, gear, levels, prayerKey, styleIndex, potionId, spellName, buffs,
-    switches, enabledSpecs: [...enabled], specOptions,
+    monsterQuery, tabs, activeTab, lockedSlots: [...sharedSlots],
+    levels, buffs, switches, enabledSpecs: [...enabled], specOptions,
     startEnergy, kills, downtimeSeconds, bankingSeconds, compareLightbearer,
   });
 
@@ -464,13 +543,23 @@ export default function App() {
   const doLoadCode = () => {
     const decoded = decodeSetup(shareCode, equipment);
     if (!decoded) { setToast('That is not a valid SpecScape code'); return; }
+    
+    if (decoded.tabs && decoded.activeTab) {
+      setTabs({
+        melee: { ...decoded.tabs.melee, presetId: '' },
+        ranged: { ...decoded.tabs.ranged, presetId: '' },
+        magic: { ...decoded.tabs.magic, presetId: '' },
+      });
+      setActiveTab(decoded.activeTab);
+      if (decoded.lockedSlots) setSharedSlots(new Set(decoded.lockedSlots));
+    } else {
+      const g = decoded.gear || {};
+      const tab = { gear: g, prayerKey: decoded.prayerKey || 'none', styleIndex: decoded.styleIndex ?? 0, potionId: decoded.potionId || 'none', spellName: decoded.spellName || '', presetId: '' };
+      setTabs({ melee: tab, ranged: tab, magic: tab });
+    }
+
     setMonsterQuery(decoded.monsterQuery);
-    setGear(decoded.gear);
     setLevels(decoded.levels);
-    setPrayerKey(decoded.prayerKey);
-    setStyleIndex(decoded.styleIndex);
-    setPotionId(decoded.potionId);
-    setSpellName(decoded.spellName);
     setBuffs(decoded.buffs);
     setSwitches(decoded.switches);
     if (decoded.enabledSpecs.length) setEnabled(new Set(decoded.enabledSpecs));
@@ -480,7 +569,6 @@ export default function App() {
     setDowntimeSeconds(decoded.downtimeSeconds);
     setBankingSeconds(decoded.bankingSeconds);
     setCompareLightbearer(decoded.compareLightbearer);
-    setPresetId('');
     setToast('Setup loaded from code');
   };
 
@@ -695,6 +783,19 @@ export default function App() {
 
           <section className="panel">
             <h2>Your normal setup</h2>
+            <div className="tab-bar">
+              {(['melee', 'ranged', 'magic'] as const).map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`tab-btn ${activeTab === t ? 'active' : ''}`}
+                  onClick={() => setActiveTab(t)}
+                >
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </button>
+              ))}
+            </div>
+
             <label>
               <span>Preset</span>
               <select value={presetId} onChange={(e) => applyPreset(e.target.value)}>
@@ -707,6 +808,8 @@ export default function App() {
               gear={gear}
               itemsBySlot={pickerItems}
               onChange={setSlot}
+              sharedSlots={sharedSlots}
+              onToggleShared={toggleSharedSlot}
               attackType={style.attackType}
               targetAttributes={monster?.attributes ?? []}
             />
@@ -726,13 +829,13 @@ export default function App() {
             <div className="row">
               <label>
                 <span>Prayer</span>
-                <select value={prayerKey} onChange={(e) => setPrayerKey(e.target.value)}>
+                <select value={prayerKey} onChange={(e) => updateTab({ prayerKey: e.target.value, presetId: '' })}>
                   {PRAYER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </label>
               <label>
                 <span>Potion</span>
-                <select value={potionId} onChange={(e) => setPotionId(e.target.value)}>
+                <select value={potionId} onChange={(e) => updateTab({ potionId: e.target.value, presetId: '' })}>
                   {POTIONS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
               </label>
@@ -743,7 +846,7 @@ export default function App() {
                 <span>Attack style</span>
                 <select
                   value={styleIndex}
-                  onChange={(e) => setStyleIndex(Number(e.target.value))}
+                  onChange={(e) => updateTab({ styleIndex: Number(e.target.value), presetId: '' })}
                 >
                   {styles.map((s, i) => (
                     <option key={`${s.name}-${i}`} value={i}>
@@ -755,7 +858,7 @@ export default function App() {
               {needsSpell ? (
                 <label>
                   <span>Spell</span>
-                  <select value={spellName} onChange={(e) => setSpellName(e.target.value)}>
+                  <select value={spellName} onChange={(e) => updateTab({ spellName: e.target.value, presetId: '' })}>
                     <option value="">None</option>
                     {spells.map((s) => (
                       <option key={s.name} value={s.name}>{s.name} ({s.maxHit})</option>
@@ -792,8 +895,15 @@ export default function App() {
 
           <section className="panel">
             <h2>Specs to compare</h2>
+            <label className="check" style={{ marginBottom: '10px' }}>
+              <input
+                type="checkbox" checked={filterSpecs}
+                onChange={(e) => setFilterSpecs(e.target.checked)}
+              />
+              Only show specs matching the current style
+            </label>
             <div className="checks">
-              {SPECS.map((s) => (
+              {SPECS.filter(s => !filterSpecs || s.type === style.attackType).map((s) => (
                 <label key={s.id} className="check">
                   <input
                     type="checkbox" checked={enabled.has(s.id)}
@@ -923,6 +1033,7 @@ export default function App() {
         <SwitchesModal
           spec={editingSpec}
           baseGear={gear}
+          tabs={tabs}
           specWeapon={specWeaponItem(editingSpec, equipment)}
           overrides={switches[editingSpec.id] ?? {}}
           itemsBySlot={switchPickerItems}
