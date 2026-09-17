@@ -30,14 +30,14 @@ body {
 header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   flex-wrap: wrap;
   gap: 16px;
   margin-bottom: 20px;
 }
 
 header h1 {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 24px;
   letter-spacing: -0.01em;
 }
@@ -52,7 +52,7 @@ header p {
   display: flex;
   gap: 16px;
   align-items: center;
-  padding-top: 8px;
+  
 }
 
 .header-links a {
@@ -368,7 +368,7 @@ footer a { color: var(--accent); }
   .switch-body { grid-template-columns: 1fr; }
 }
 
-.switch-stats { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.switch-stats { display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .switch-stats .fact { white-space: nowrap; }
 .fact.bad-fact { color: var(--bad); border-color: rgba(212, 89, 75, 0.5); }
 
@@ -508,5 +508,7 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--bad); color: var(-
   color: #fff;
   border-color: var(--accent);
 }
+
+
 
 
