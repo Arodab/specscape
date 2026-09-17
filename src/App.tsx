@@ -198,6 +198,19 @@ export default function App() {
     return map;
   }, [editingSpec, equipment, itemsBySlot, pickerItems]);
 
+  const monsterOptions = useMemo(() => {
+    return monsters.map((m, i) => (
+      <option key={`${m.id}-${m.version}-${i}`} value={monsterLabel(m)} />
+    ));
+  }, [monsters]);
+
+  const hasCox = useMemo(() => {
+    return encounters.some(e => {
+      const m = monsters.find(m => monsterLabel(m) === e.monsterId);
+      return m?.attributes.includes('xerician');
+    });
+  }, [encounters, monsters]);
+
   /** Styles the equipped weapon actually offers. */
   const styles = useMemo(() => stylesFor(gear), [gear]);
   const style = useMemo(() => selectedStyle(gear, styleIndex), [gear, styleIndex]);
@@ -498,7 +511,7 @@ export default function App() {
 
   const ranOnce = useRef(false);
   useEffect(() => {
-    if (!ranOnce.current && encounters.length > 0 && equipment.length) {
+    if (!ranOnce.current && encounters.length > 0 && equipment.length && restored.current) {
       ranOnce.current = true;
       run();
     }
@@ -875,9 +888,7 @@ export default function App() {
             <button className="mini" onClick={() => loadPreset('cox')}>CoX</button>
           </div>
           <datalist id="monster-list">
-            {monsters.map((m, i) => (
-              <option key={`${m.id}-${m.version}-${i}`} value={monsterLabel(m)} />
-            ))}
+            {monsterOptions}
           </datalist>
           {firstEncounterMonster && limit && drainNote && <div className="warn" style={{ marginTop: "8px" }}>{drainNote}</div>}
         </section>
@@ -918,10 +929,7 @@ export default function App() {
             </label>
           </div>
           <div className="row">
-            {encounters.some(e => {
-              const m = monsters.find(m => monsterLabel(m) === e.monsterId);
-              return m?.attributes.includes('xerician');
-            }) && (
+            {hasCox && (
               <label>
                 <span title="Scales CoX monster HP">CoX Party Size</span>
                 <input
