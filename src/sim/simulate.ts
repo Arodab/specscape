@@ -1,7 +1,7 @@
 import { accuracy } from './combat';
 import { mulberry32, randInt } from './rng';
-import { specPolicy, specById, type SpecCtx, } from './specs';
-import type { Monster, MonsterState, SimOptions, SpecResult } from './types';
+import { specPolicy, specById, type SpecCtx, type SpecDef } from './specs';
+import type { Monster, MonsterState, SimOptions, SpecResult, Loadout } from './types';
 
 /**
  * Monte Carlo kill simulation.
@@ -79,16 +79,13 @@ interface KillOutcome {
  */
 const simulateKill = (
   encounter: import('./types').SimEncounter,
-  specId: string | null,
+  spec: { def: SpecDef, load: Loadout } | null,
   opts: SimOptions,
   rng: () => number,
   energy: EnergyState,
   isLastKill: boolean,
 ): KillOutcome => {
-  const { monster, main, specLoads } = encounter;
-  const specLoad = specId ? specLoads[specId] : null;
-  const specDef = specId ? specById(specId) : null;
-  const spec = specDef && specLoad ? { def: specDef, load: specLoad } : null;
+  const { monster, main } = encounter;
 
   const state = freshState(monster);
   const isDemon = monster.attributes.includes('demon');
@@ -160,8 +157,8 @@ interface TripOutcome {
   killTicks: number[];
 }
 
-const simulateTrip = (input: SimInput, rng: () => number): TripOutcome => {
-  const { opts, encounters, specId } = input;
+const simulateTrip = (input: SimInput, precomputedSpecs: ({ def: SpecDef, load: Loadout } | null)[], rng: () => number): TripOutcome => {
+  const { opts, encounters } = input;
   const loops = Math.max(1, opts.kills); // opts.kills now represents loops per trip
   const energy: EnergyState = {
     energy: opts.startEnergy,
@@ -188,7 +185,7 @@ const simulateTrip = (input: SimInput, rng: () => number): TripOutcome => {
 
       for (let k = 0; k < enc.count; k++) {
         const isLastKill = isLastEncounterInTrip && (k === enc.count - 1);
-        const r = simulateKill(enc, specId, opts, rng, energy, isLastKill);
+        const r = simulateKill(enc, precomputedSpecs[eIdx], opts, rng, energy, isLastKill);
         combatTicks += r.ticks;
         totalTicks += r.ticks;
         energySpent += r.energySpent;
@@ -234,6 +231,11 @@ export const runSim = (input: SimInput): RawResult => {
   const { opts, specId, encounters } = input;
   const rng = mulberry32(opts.seed);
   const loops = Math.max(1, opts.kills);
+  const specDef = specId ? specById(specId) : null;
+  const precomputedSpecs = encounters.map(enc => {
+    const load = specId ? enc.specLoads[specId] : null;
+    return specDef && load ? { def: specDef, load } : null;
+  });
   const trips = opts.trials;
 
   const totalKillsPerTrip = encounters.reduce((sum, e) => sum + e.count, 0) * loops;
@@ -244,7 +246,7 @@ export const runSim = (input: SimInput): RawResult => {
   let totalCasts = 0;
 
   for (let i = 0; i < trips; i++) {
-    const r = simulateTrip(input, rng);
+    const r = simulateTrip(input, precomputedSpecs, rng);
     totalTripTicks += r.totalTicks;
     totalEnergy += r.energySpent;
     totalCasts += r.casts;
@@ -254,8 +256,6 @@ export const runSim = (input: SimInput): RawResult => {
   const sorted = [...allKillTicks].sort((a, b) => a - b);
   const meanTicks = allKillTicks.reduce((a, b) => a + b, 0) / allKillTicks.length;
   const meanTripTicks = totalTripTicks / trips;
-
-  const specDef = specId ? specById(specId) : null;
 
   return {
     specId: specId,
@@ -301,3 +301,6 @@ export const compareSpecs = (
     ...rows,
   ];
 };
+
+
+
