@@ -87,6 +87,7 @@ const simulateKill = (
   input: SimInput,
   rng: () => number,
   energy: EnergyState,
+  isLastKill: boolean,
 ): KillOutcome => {
   const { monster, main, spec, opts } = input;
   const state = freshState(monster);
@@ -106,7 +107,8 @@ const simulateKill = (
   while (state.hp > 0 && ticks < MAX_TICKS) {
     const canSpec = spec
       && energy.energy >= spec.def.cost
-      && (specPolicy(spec.def) === 'greedy' || !openingOver);
+      && (specPolicy(spec.def) === 'greedy' || !openingOver)
+      && (isLastKill || state.hp > main.maxHit);
 
     if (spec && canSpec) {
       const acc = spec.def.guaranteed
@@ -176,7 +178,7 @@ const simulateTrip = (input: SimInput, rng: () => number): TripOutcome => {
   const idle = makeAdvance(opts, energy, () => { totalTicks++; });
 
   for (let k = 0; k < kills; k++) {
-    const r = simulateKill(input, rng, energy);
+    const r = simulateKill(input, rng, energy, k === kills - 1);
     combatTicks += r.ticks;
     totalTicks += r.ticks;
     energySpent += r.energySpent;
