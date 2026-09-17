@@ -111,25 +111,7 @@ These interact in ways worth seeing: a salve (ei) on Vorkath boosts your main we
 every melee spec by 20%, but does nothing for the Zaryte crossbow's percent-of-HP ruby proc -
 so turning salve on drops ZCB from 1st to 4th.
 
-## Running it
-
-```bash
-npm install
-npm run data     # fetch monster + item data (writes public/data/)
-npm run dev
-```
-
-Other commands:
-
-```bash
-npm test         # engine unit + integration tests
-npm run build    # static production build into dist/
-```
-
-`npm run data` must be run at least once before `dev` or `build`, and re-run whenever
-you want to pick up game updates.
-
-### Finding gear
+## Finding gear
 
 Clicking a slot opens a picker that **sorts by the strength stat matching your equipped
 style** by default - melee strength for a scythe, ranged strength for a bow, magic damage for
@@ -171,21 +153,7 @@ base36, and only values that differ from the defaults are stored. Specs are reco
 which ones are *disabled*, so the usual "everything on" case costs nothing and a code keeps
 working when the spec roster changes.
 
-### Deploying
-
-The build is fully static with no backend. `vite.config.ts` defaults `base` to
-`/specscape/` for GitHub Pages project sites; override it for a root domain:
-
-```bash
-BASE=/ npm run build
-```
-
-In Git Bash prefix that with `MSYS_NO_PATHCONV=1`, which otherwise rewrites a bare `/` into a
-Windows path. Note `base` is deliberately not conditional on the Vite command: `vite preview`
-runs as `serve`, so a conditional base makes preview serve paths the built `index.html` never
-asks for.
-
-## Layout
+### Layout
 
 ```
 src/sim/          pure simulation engine, no UI dependencies
@@ -288,3 +256,4 @@ permitted.
 The wiki calculator itself is GPL-3.0. SpecScape does not include any of its code.
 
 Not affiliated with Jagex. Old School RuneScape is a trademark of Jagex Ltd.
+
