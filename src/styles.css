@@ -1,10 +1,10 @@
 :root {
-  --bg: #140d0d;
-  --panel: #1f1414;
-  --panel-2: #291a1a;
-  --line: #3d2626;
-  --text: #ebd5d5;
-  --muted: #a38989;
+  --bg: #141414;
+  --panel: #1c1c1c;
+  --panel-2: #262626;
+  --line: #383838;
+  --text: #ededed;
+  --muted: #9e9e9e;
   --accent: #e63939;
   --good: #6fbf5e;
   --bad: #d4594b;
@@ -440,4 +440,5 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--bad); color: var(-
 @media (max-width: 900px) {
   .top-panels { grid-template-columns: 1fr; }
 }
+
 
