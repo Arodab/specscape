@@ -430,6 +430,7 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--bad); color: var(-
 /* Saved setups and encounter settings sit above the main split: they are
    changed often and do not belong at the bottom of a long left column. */
 .top-panels {
+  margin-bottom: 24px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
@@ -438,7 +439,8 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--bad); color: var(-
 .top-panels .panel { margin-bottom: 0; }
 
 @media (max-width: 900px) {
-  .top-panels { grid-template-columns: 1fr; }
+  .top-panels {
+  margin-bottom: 24px; grid-template-columns: 1fr; }
 }
 
 
@@ -487,3 +489,4 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--bad); color: var(-
   color: #fff;
   border-color: var(--accent);
 }
+

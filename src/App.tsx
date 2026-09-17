@@ -610,10 +610,7 @@ export default function App() {
       <header>
         <div className="header-text">
           <h1>Spec<span>Scape</span></h1>
-          <p>
-            Specs ranked by <b>how much time they actually save</b> versus attacking normally -
-            counting the ticks they cost, overkill waste, defence drains and spec energy.
-          </p>
+          
         </div>
         <div className="header-links">
           <a href="https://runelite.net/plugin-hub/Arodab" target="_blank" rel="noreferrer">
@@ -690,6 +687,7 @@ export default function App() {
             Your setup is remembered in this browser. Copy code gives you one short string that
             carries the whole thing.
           </p>
+        <button className="primary" style={{ marginTop: "16px", width: "100%" }} onClick={run} disabled={running || !monster}>{running ? "Simulating..." : "Compare specs"}</button>
         </section>
 
         <section className="panel">
@@ -925,9 +923,6 @@ export default function App() {
             ))}
           </section>
 
-          <button className="primary" onClick={run} disabled={running || !monster}>
-            {running ? 'Simulating...' : 'Compare specs'}
-          </button>
         </div>
 
         <section className="panel">
@@ -1059,3 +1054,6 @@ export default function App() {
 }
 
 export { itemLabel };
+
+
+
