@@ -244,18 +244,18 @@ export const SPECS: SpecDef[] = [
     id: 'bone_dagger',
     name: 'Bone dagger',
     item: 'Bone dagger',
-    cost: 75,
+    cost: 25,
     speed: 4,
     type: 'melee',
     defStyle: 'stab',
     accMult: 1,
+    guaranteed: true,
     drains: true,
+    policy: 'opening',
     option: { key: 'boneDaggerOpener', label: 'Bone dagger: 100% accuracy opener', default: true },
     note: 'Drains Defence by the damage dealt. Guaranteed to hit as an opener, which is how it is normally used.',
     maxHit: (base) => base,
     hits: (ctx, specMax) => {
-      // The backstab only lands automatically when the target has not engaged
-      // you yet; the toggle lets you model it either way.
       const opener = ctx.options.boneDaggerOpener !== false;
       if (!opener && !rollHit(ctx)) return [0];
       const dmg = uniformDamage(ctx, specMax);
@@ -301,7 +301,7 @@ export const SPECS: SpecDef[] = [
     name: 'Dragon thrownaxe',
     item: 'Dragon thrownaxe',
     cost: 25,
-    speed: 5,
+    speed: 1,
     type: 'ranged',
     defStyle: 'light',
     accMult: 1,
@@ -336,12 +336,19 @@ export const SPECS: SpecDef[] = [
     type: 'ranged',
     defStyle: 'standard',
     accMult: 1,
-    note: 'Two arrows at 1.5x damage with a minimum of 8 each (assumes dragon arrows). Very slow at 9 ticks.',
-    maxHit: (base) => factor(base, 15, 10),
-    hits: (ctx, specMax) => [
-      rollHit(ctx) ? randInt(ctx.rng, 8, Math.max(8, specMax)) : 0,
-      rollHit(ctx) ? randInt(ctx.rng, 8, Math.max(8, specMax)) : 0,
-    ],
+    note: 'Two arrows at 1.5x damage with a minimum of 8 each for dragon arrows (1.3x and min 5 for others).',
+    maxHit: (base) => factor(base, 15, 10), // UI will assume dragon arrows
+    hits: (ctx, specMax) => {
+      // specMax here is already multiplied by 1.5 because of the above maxHit function.
+      const isDragon = ctx.load.ammoName?.toLowerCase().includes('dragon');
+      const minHit = isDragon ? 8 : 5;
+      const actualMax = isDragon ? specMax : factor(ctx.load.maxHit, 13, 10);
+      
+      return [
+        rollHit(ctx) ? randInt(ctx.rng, minHit, Math.max(minHit, actualMax)) : 0,
+        rollHit(ctx) ? randInt(ctx.rng, minHit, Math.max(minHit, actualMax)) : 0,
+      ];
+    },
   },
 
   // ---------- defence drain specs ----------

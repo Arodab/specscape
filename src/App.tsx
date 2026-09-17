@@ -684,10 +684,7 @@ export default function App() {
                 <option value={100000}>100,000 (precise)</option>
               </select>
             </label>
-          </div>
-          <div className="row">
-            <label>
-              <span>Kills per trip</span>
+          </div>`n          <div className="row-3">`n            <label>`n              <span>Kills per trip</span>
               <input
                 type="number" min={1} max={200} value={kills}
                 onChange={(e) => setKills(Math.max(1, Number(e.target.value) || 1))}
@@ -701,7 +698,7 @@ export default function App() {
               />
             </label>
             <label>
-              <span>Banking time (s, optional) (Dead time; you return with 100% spec)</span>
+              <span>Banking time (s, restores spec)</span>
               <input
                 type="number" min={0} max={900} value={bankingSeconds}
                 onChange={(e) => setBankingSeconds(Math.max(0, Number(e.target.value) || 0))}
@@ -996,6 +993,8 @@ export default function App() {
 }
 
 export { itemLabel };
+
+
 
 
 

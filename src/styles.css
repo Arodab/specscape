@@ -135,6 +135,7 @@ input:focus, select:focus {
 }
 
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 
 .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }
@@ -507,4 +508,5 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--bad); color: var(-
   color: #fff;
   border-color: var(--accent);
 }
+
 

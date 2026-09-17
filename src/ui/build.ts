@@ -97,6 +97,60 @@ export const buildMain = (setup: SetupInput, monster: Monster | null): Loadout =
     })
     : undefined;
 
+  const isToa = monster && /^(Zebak|Kephri|Akkha|Ba-Ba|Tumeken's Warden|Elidinis' Warden|Obelisk|Core)/i.test(monster.name);
+  const isCox = monster && monster.attributes.includes('xerician');
+
+  let attackFactors = [...mods.attackFactors];
+  let damageFactors = [...mods.damageFactors];
+  let equipAttack = attackBonusFor(bonuses, style.type);
+  let equipStrength = strengthBonusFor(bonuses, type);
+  let magicDamageBonus = mods.magicDamageBonus;
+
+  if (weapon?.name === "Tumeken's shadow") {
+    const mult = isToa ? 4 : 3;
+    equipAttack = attackBonusFor(bonuses, 'magic') * mult;
+    magicDamageBonus = strengthBonusFor(bonuses, 'magic') * mult + mods.magicDamageBonus;
+    equipStrength = 0; // Shadow doesn't use standard magic strength from gear directly
+  }
+
+  let finalMaxHitOverride = maxHitOverride;
+
+  if (weapon?.name === 'Twisted bow' && monster) {
+    const magic = Math.max(monster.magic, monster.d.magic);
+    const cap = isCox ? 350 : 250;
+    const m = Math.min(cap, magic);
+    
+    // Twisted bow accuracy and damage scaling
+    // Accuracy: 140 + (3d6 - 14)/100 - wait, what's the exact formula?
+    // According to OSRS Wiki:
+    // Accuracy: 140 + (3 * magic - 10) / 100 - wait...
+    // Let me check OSRS twisted bow formula exactly.
+    // Acc multiplier: 140 + (3 * magic - 10) / 100 ? No!
+    // The exact TBow formula:
+    const accMult = 140 + Math.trunc((3 * m - 10) / 100) - Math.trunc(Math.pow(3 * m / 10 - 100, 2) / 100);
+    // Wait, let's use the standard simplified wiki formula:
+    // Accuracy = 140 + trunc((3*m - 10)/100) - trunc((3*m/10 - 100)^2 / 100)  -- no, the wiki formula is:
+    // Accuracy: 140 + (3 * m - 10) / 100 - ((3 * m / 10) - 100)^2 / 100 ?
+    // Let's implement the precise tbow formula.
+    const accuracyBonus = 140 + Math.trunc((3 * m - 10) / 100) - Math.trunc(Math.pow(m * 3 / 10 - 100, 2) / 100);
+    const damageBonus = 250 + Math.trunc((3 * m - 14) / 100) - Math.trunc(Math.pow(m * 3 / 10 - 140, 2) / 100);
+    
+    // Apply as factor: value / 100 (but wait, max 140 for acc means 140%?)
+    // Yes, 1.4x accuracy, meaning factor is [accMult, 100].
+    attackFactors.push([Math.max(0, accuracyBonus), 100]);
+    damageFactors.push([Math.max(0, damageBonus), 100]);
+  }
+
+  if (weapon?.name === "Tumeken's shadow") {
+    finalMaxHitOverride = magicMaxHit({
+      spell,
+      weaponName: weapon?.name,
+      magicLevel: levels.magic + boostsFor(potionId, levels).magic,
+      magicDamageBonus,
+      blackMask: mods.magicBlackMask,
+    });
+  }
+
   return buildLoadout({
     name: weapon?.name ?? 'Unarmed',
     type,
@@ -105,16 +159,17 @@ export const buildMain = (setup: SetupInput, monster: Monster | null): Loadout =
     prayers: PRAYERS[prayerKey] ?? PRAYERS.none,
     style: { attack: stance.attack, strength: stance.strength },
     equip: {
-      attack: attackBonusFor(bonuses, style.type),
-      strength: strengthBonusFor(bonuses, type),
+      attack: equipAttack,
+      strength: weapon?.name === "Tumeken's shadow" ? 0 : equipStrength,
     },
     speed,
     defStyle: style.type,
     voidAttack: mods.voidAttack,
     voidStrength: mods.voidStrength,
-    attackFactors: mods.attackFactors,
-    damageFactors: mods.damageFactors,
-    maxHitOverride,
+    attackFactors,
+    damageFactors,
+    maxHitOverride: finalMaxHitOverride,
+    ammoName: gear.ammo?.name ?? null,
   });
 };
 
@@ -195,6 +250,7 @@ export const buildSpecLoadout = (
     attackFactors: mods.attackFactors,
     damageFactors: mods.damageFactors,
     maxHitOverride,
+    ammoName: gear.ammo?.name ?? null,
   });
 };
 

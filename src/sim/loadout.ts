@@ -72,6 +72,7 @@ export interface LoadoutInput {
    * magic path computes its own value and passes it here.
    */
   maxHitOverride?: number;
+  ammoName?: string | null;
 }
 
 /** An integer multiplier as [numerator, denominator]. */
@@ -100,7 +101,7 @@ export const buildLoadout = (input: LoadoutInput): Loadout => {
   const {
     name, type, levels, boosts, prayers, style, equip, speed, defStyle,
     voidAttack = 1, voidStrength = 1,
-    attackFactors = [], damageFactors = [], maxHitOverride,
+    attackFactors = [], damageFactors = [], maxHitOverride, ammoName
   } = input;
 
   const isRanged = type === 'ranged';
@@ -121,7 +122,7 @@ export const buildLoadout = (input: LoadoutInput): Loadout => {
   const baseMax = maxHitOverride ?? Math.trunc((effStr * (equip.strength + 64) + 320) / 640);
   const maxHit = applyFactors(baseMax, damageFactors);
 
-  return { name, type, attackRoll, maxHit, speed, defStyle };
+  return { name, type, attackRoll, maxHit, speed, defStyle, ammoName };
 };
 
 /** Common prayer presets. */

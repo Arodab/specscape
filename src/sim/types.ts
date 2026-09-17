@@ -46,6 +46,8 @@ export interface Loadout {
   speed: number;
   /** Which monster defence bonus this attack rolls against. */
   defStyle: DefStyle;
+  /** The ammo used (if any) */
+  ammoName?: string | null;
 }
 
 export interface SimOptions {

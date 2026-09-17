@@ -185,7 +185,7 @@ export const resolveModifiers = (
   }
 
   // --- bane weapons: only do anything against their own monster type ---
-  const bane = baneFor(gear.weapon?.name, monster?.attributes);
+  const bane = baneFor(gear.weapon?.name, monster?.attributes, monster?.name);
   if (bane) {
     if (bane.accuracy) attackFactors.push(bane.accuracy);
     if (bane.damage) damageFactors.push(bane.damage);

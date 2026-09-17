@@ -147,11 +147,18 @@ export const BANE_WEAPONS: BaneWeapon[] = [
 export const baneFor = (
   weaponName: string | null | undefined,
   monsterAttributes: string[] | null | undefined,
+  monsterName?: string,
 ): BaneWeapon | null => {
   if (!weaponName || !monsterAttributes?.length) return null;
-  return BANE_WEAPONS.find(
+  const bane = BANE_WEAPONS.find(
     (b) => b.match.test(weaponName) && b.attributes.some((a) => monsterAttributes.includes(a)),
   ) ?? null;
+  
+  if (bane && bane.attributes.includes('demon') && monsterName === 'Duke Sucellus') {
+    return null;
+  }
+  
+  return bane;
 };
 
 /**
