@@ -703,6 +703,13 @@ export default function App() {
       <div className="top-panels">
         <section className="panel">
           <h2>Sequence</h2>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '4px', fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase' }}>
+            <span style={{ flex: 2 }}>Monster</span>
+            <span style={{ width: '60px' }} title="Kill count">Count</span>
+            <span style={{ flex: 1 }}>Setup</span>
+            <span style={{ width: '60px' }} title="Downtime before (s)">Delay(s)</span>
+            <span style={{ width: '24px' }}></span>
+          </div>
           <div className="encounter-list" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {encounters.map((enc, i) => (
               <div key={enc.id} className="encounter-row" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -756,6 +763,7 @@ export default function App() {
                 />
                 <button
                   className="mini"
+                  style={{ width: "24px" }}
                   onClick={() => {
                     const newE = encounters.filter((_, idx) => idx !== i);
                     setEncounters(newE.length ? newE : [{ id: crypto.randomUUID(), monsterId: DEFAULT_MONSTER, styleTab: 'melee', count: 1, downtimeSeconds: 0 }]);
