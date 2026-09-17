@@ -531,7 +531,7 @@ export default function App() {
           <a href="https://runelite.net/plugin-hub/Arodab" target="_blank" rel="noreferrer">
             My RuneLite plugins
           </a>
-          <a href="#" target="_blank" rel="noreferrer">
+          <a href="https://buymeacoffee.com/arodab" target="_blank" rel="noreferrer">
             Buy me a coffee
           </a>
         </div>
