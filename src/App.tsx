@@ -75,7 +75,9 @@ export default function App() {
         { id: crypto.randomUUID(), monsterId: 'Vanguard (Melee)', styleTab: 'melee', count: 1, downtimeSeconds: 15 },
         { id: crypto.randomUUID(), monsterId: 'Vasa Nistirio (Normal)', styleTab: 'ranged', count: 1, downtimeSeconds: 15 },
         { id: crypto.randomUUID(), monsterId: 'Vespula (Normal)', styleTab: 'ranged', count: 1, downtimeSeconds: 15 },
-        { id: crypto.randomUUID(), monsterId: 'Great Olm (Head (Normal))', styleTab: 'magic', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Great Olm (Left claw (Normal))', styleTab: 'magic', count: 2, downtimeSeconds: 10 },
+        { id: crypto.randomUUID(), monsterId: 'Great Olm (Right claw (Normal))', styleTab: 'melee', count: 2, downtimeSeconds: 5 },
+        { id: crypto.randomUUID(), monsterId: 'Great Olm (Head (Normal))', styleTab: 'ranged', count: 1, downtimeSeconds: 10 },
       ];
     }
     setEncounters(list);
@@ -105,10 +107,11 @@ export default function App() {
 
   const [enabled, setEnabled] = useState<Set<string>>(() => new Set(SPECS.map((s) => s.id)));
   const [startEnergy, setStartEnergy] = useState(100);
-  const [trials, setTrials] = useState(20000);
+  const [trials, setTrials] = useState(5000);
   const [kills, setKills] = useState(1);
   const [bankingSeconds, setBankingSeconds] = useState(30);
   const [compareLightbearer, setCompareLightbearer] = useState(true);
+  const [partySize, setPartySize] = useState(1);
 
   const [rows, setRows] = useState<SpecResult[] | null>(null);
   const [lbRows, setLbRows] = useState<SpecResult[] | null>(null);
@@ -390,7 +393,12 @@ export default function App() {
 
     // Convert EncounterDef to SimEncounter
     const simEncounters: SimEncounter[] = encounters.map(e => {
-      const m = monsters.find(m => monsterLabel(m) === e.monsterId) ?? monsters[0];
+      let m = monsters.find(m => monsterLabel(m) === e.monsterId) ?? monsters[0];
+      // CoX HP scaling: floor(baseHp * (1 + (partySize - 1) * 0.5))
+      if (partySize > 1 && m.attributes.includes('xerician')) {
+        const scaledHp = Math.floor(m.hp * (1 + (partySize - 1) * 0.5));
+        m = { ...m, hp: scaledHp };
+      }
       const t = tabs[e.styleTab];
       const setupForTab: SetupInput = {
         gear: t.gear,
@@ -433,7 +441,10 @@ export default function App() {
       let finalEncounters = simEncounters;
       if (lightbearer && lightbearerItem) {
         finalEncounters = encounters.map(e => {
-          const m = monsters.find(m => monsterLabel(m) === e.monsterId) ?? monsters[0];
+          let m = monsters.find(m => monsterLabel(m) === e.monsterId) ?? monsters[0];
+          if (partySize > 1 && m.attributes.includes('xerician')) {
+            m = { ...m, hp: Math.floor(m.hp * (1 + (partySize - 1) * 0.5)) };
+          }
           const t = tabs[e.styleTab];
           const setupForTab: SetupInput = {
             gear: { ...t.gear, ring: lightbearerItem },
@@ -482,7 +493,7 @@ export default function App() {
   }, [
     monsters, encounters, tabs, levels, spells, buffs, equipment, enabled, resolvedSwitches,
     startEnergy, effectiveTrials, kills, bankingSeconds,
-    compareLightbearer, lightbearerItem, specOptions,
+    compareLightbearer, lightbearerItem, specOptions, partySize,
   ]);
 
   const ranOnce = useRef(false);
@@ -906,6 +917,21 @@ export default function App() {
               />
             </label>
           </div>
+          <div className="row">
+            {encounters.some(e => {
+              const m = monsters.find(m => monsterLabel(m) === e.monsterId);
+              return m?.attributes.includes('xerician');
+            }) && (
+              <label>
+                <span title="Scales CoX monster HP">CoX Party Size</span>
+                <input
+                  type="number" min={1} max={100} value={partySize}
+                  onChange={(e) => setPartySize(Math.max(1, Number(e.target.value) || 1))}
+                />
+              </label>
+            )}
+          </div>
+
           <label className="check">
             <input
               type="checkbox" checked={compareLightbearer}
