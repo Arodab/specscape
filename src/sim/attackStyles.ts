@@ -221,6 +221,10 @@ export const stylesForCategory = (category: string | null | undefined): AttackSt
 
 /** The style a weapon defaults to when equipped - the first offensive one. */
 export const defaultStyleIndex = (styles: AttackStyle[]): number => {
-  const i = styles.findIndex((s) => s.stance !== 'defensive');
+  let i = styles.findIndex((s) => s.stance === 'rapid');
+  if (i === -1) i = styles.findIndex((s) => s.stance === 'aggressive');
+  if (i === -1) i = styles.findIndex((s) => s.stance === 'controlled');
+  if (i === -1) i = styles.findIndex((s) => s.stance !== 'defensive');
   return i === -1 ? 0 : i;
 };
+

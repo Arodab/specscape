@@ -14,6 +14,7 @@ import {
   POTIONS, activeModifiers, buildMain, buildSpecCandidates, buildSpecLoadout,
   selectedStyle, specWeaponItem, stylesFor, type SetupInput,
 } from './ui/build';
+import { defaultStyleIndex } from './sim/attackStyles';
 import { DEFAULT_BUFFS, type Buffs } from './sim/modifiers';
 import {
   deleteSetup, gearToRefs, listSetups, refsToGear, resolveRef, saveSetup,
@@ -82,8 +83,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabKind>('melee');
   const [tabs, setTabs] = useState<Record<TabKind, { gear: GearSet, presetId: string, prayerKey: string, styleIndex: number, potionId: string, spellName: string }>>({
     melee: { gear: {}, presetId: DEFAULT_PRESET, prayerKey: 'piety', styleIndex: 0, potionId: 'super_combat', spellName: '' },
-    ranged: { gear: {}, presetId: DEFAULT_PRESET, prayerKey: 'rigour', styleIndex: 0, potionId: 'ranging', spellName: '' },
-    magic: { gear: {}, presetId: DEFAULT_PRESET, prayerKey: 'augury', styleIndex: 0, potionId: 'imbued_heart', spellName: '' },
+    ranged: { gear: {}, presetId: 'max_ranged_tbow', prayerKey: 'rigour', styleIndex: 0, potionId: 'ranging', spellName: '' },
+    magic: { gear: {}, presetId: 'max_magic_shadow', prayerKey: 'augury', styleIndex: 0, potionId: 'imbued_heart', spellName: '' },
   });
   const [sharedSlots, setSharedSlots] = useState<Set<Slot>>(new Set());
   
@@ -243,7 +244,7 @@ export default function App() {
     return out;
   }, [switches, equipment]);
 
-  const applyPreset = useCallback((id: string) => {
+  const applyPreset = useCallback((id: string, targetTab?: TabKind) => {
     const preset = PRESETS.find((p) => p.id === id);
     if (!preset || !equipment.length) return;
     const nextGear: GearSet = {};
@@ -258,10 +259,11 @@ export default function App() {
     setTabs(all => {
       const nextStyles = stylesFor(nextGear);
       const idx = nextStyles.findIndex((s) => s.name === preset.styleName);
-      const t = all[activeTab];
+      const tabToUpdate = targetTab ?? activeTab;
+      const t = all[tabToUpdate];
       return {
         ...all,
-        [activeTab]: {
+        [tabToUpdate]: {
           ...t,
           gear: nextGear,
           presetId: id,
@@ -285,7 +287,7 @@ export default function App() {
 
     const prev = loadSession();
     if (!prev || (!prev.tabs && (!prev.gear || !Object.keys(prev.gear).length))) {
-      applyPreset(DEFAULT_PRESET);
+      applyPreset('max_melee_scythe', 'melee'); applyPreset('max_ranged_tbow', 'ranged'); applyPreset('max_magic_shadow', 'magic');
       return;
     }
 
@@ -488,7 +490,7 @@ export default function App() {
       let nextStyleIndex = t.styleIndex;
       if (slot === 'weapon') {
         const s = stylesFor(nextGear);
-        nextStyleIndex = Math.min(t.styleIndex, s.length - 1);
+        nextStyleIndex = defaultStyleIndex(s);
         const kind = ammoKindFor(item);
         const allowed = ammoFor(item, itemsBySlot.get('ammo') ?? []);
         if (!kind) {
@@ -1142,6 +1144,12 @@ export default function App() {
 }
 
 export { itemLabel };
+
+
+
+
+
+
 
 
 
