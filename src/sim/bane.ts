@@ -134,6 +134,13 @@ export const BANE_WEAPONS: BaneWeapon[] = [
     accuracy: [125, 100],
     label: 'vampyrebane +25%',
   },
+
+  // --- undeadbane ---
+  {
+    match: /^Salve amulet/i,
+    attributes: ['undead'],
+    label: 'undeadbane',
+  },
 ];
 
 /** The bane entry for a weapon against a target, if it applies. */

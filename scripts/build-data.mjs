@@ -148,8 +148,9 @@ const isUseful = (e) =>
  */
 const UNUSABLE_PATTERNS = [
   /deadman/i,
-  /trailblazer|shattered relic|league/i,
+  /trailblazer|shattered relic| league /i,
   /\(beta\)|tournament/i,
+  /wilderness champion/i,
 ];
 
 const isUsableInMainGame = (e) =>
