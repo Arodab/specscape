@@ -540,8 +540,8 @@ export default function App() {
     }
   };
 
-  const doLoadCode = () => {
-    const decoded = decodeSetup(shareCode, equipment);
+  const doLoadCode = (codeStr = shareCode) => {
+    const decoded = decodeSetup(codeStr, equipment);
     if (!decoded) { setToast('That is not a valid SpecScape code'); return; }
     
     if (decoded.tabs && decoded.activeTab) {
@@ -607,10 +607,22 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
+      <header className="top-bar">
         <div className="header-text">
           <h1>Spec<span>Scape</span></h1>
           
+        </div>
+        <div className="saved-setups-compact">
+          <input className="mini-input" placeholder="Setup name..." value={setupName} onChange={(e) => setSetupName(e.target.value)} />
+          <button className="mini" onClick={doSave}>Save</button>
+          <button className="mini" onClick={() => deleteSetup(setupName)}>Delete</button>
+          <select className="mini-select" value="" onChange={(e) => e.target.value && doLoad(e.target.value)}>
+            <option value="">Load...</option>
+            {saved.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+          </select>
+          <button className="mini" onClick={doCopyCode}>Export</button>
+          <button className="mini" onClick={async () => { try { const txt = await navigator.clipboard.readText(); doLoadCode(txt); } catch(e) { setToast('Clipboard read failed'); } }}>Import</button>
+          <button className="mini" onClick={() => { clearSession(); window.location.reload(); }}>Reset</button>
         </div>
         <div className="header-links">
           <a href="https://runelite.net/plugin-hub/Arodab" target="_blank" rel="noreferrer">
@@ -624,70 +636,34 @@ export default function App() {
 
       <div className="top-panels">
         <section className="panel">
-          <h2>Saved setups</h2>
-          <div className="row">
-            <label>
-              <span>Name</span>
-              <input
-                value={setupName}
-                onChange={(e) => setSetupName(e.target.value)}
-                placeholder="My Vorkath setup"
-              />
-            </label>
-            <label>
-              <span>Load</span>
-              <select value="" onChange={(e) => e.target.value && doLoad(e.target.value)}>
-                <option value="">{saved.length ? 'Choose...' : 'Nothing saved yet'}</option>
-                {saved.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="btn-row">
-            <button className="mini" onClick={doSave}>Save</button>
-            <button className="mini" onClick={doCopyCode}>Copy code</button>
-            <button className="mini" disabled={!shareCode.trim()} onClick={doLoadCode}>
-              Load code
-            </button>
-            <button
-              className="mini"
-              title="Forget the remembered configuration and start from the default setup"
-              onClick={() => {
-                clearSession();
-                setMonsterQuery(DEFAULT_MONSTER);
-                setSetupName('');
-                setSwitches({});
-                setBuffs(DEFAULT_BUFFS);
-                applyPreset(DEFAULT_PRESET);
-                setToast('Reset to the default setup');
-              }}
-            >
-              Reset
-            </button>
-            <button
-              className="mini danger"
-              disabled={!setupName.trim() || !saved.some((s) => s.name === setupName.trim())}
-              onClick={() => {
-                setSaved(deleteSetup(setupName.trim()));
-                setToast(`Deleted "${setupName.trim()}"`);
-              }}
-            >
-              Delete
-            </button>
-          </div>
+          <h2>Target</h2>
           <label>
-            <span>Share code</span>
+            <span>Monster</span>
             <input
-              value={shareCode}
-              onChange={(e) => setShareCode(e.target.value)}
-              placeholder="Paste a code here, then Load code"
-              spellCheck={false}
+              list="monster-list"
+              value={monsterQuery}
+              onChange={(e) => setMonsterQuery(e.target.value)}
+              placeholder="Search a monster..."
             />
           </label>
-          <p className="hint">
-            Your setup is remembered in this browser. Copy code gives you one short string that
-            carries the whole thing.
-          </p>
-        <button className="primary" style={{ marginTop: "16px", width: "100%" }} onClick={run} disabled={running || !monster}>{running ? "Simulating..." : "Compare specs"}</button>
+          <datalist id="monster-list">
+            {monsterOptions.map((m, i) => (
+              <option key={`${m.id}-${m.version}-${i}`} value={monsterLabel(m)} />
+            ))}
+          </datalist>
+
+          {monster && (
+            <div className="target-facts">
+              <span className="fact"><b>{monster.hp}</b> HP</span>
+              <span className="fact"><b>{monster.def}</b> def</span>
+              <span className="fact">stab <b>{monster.d.stab}</b></span>
+              <span className="fact">slash <b>{monster.d.slash}</b></span>
+              <span className="fact">crush <b>{monster.d.crush}</b></span>
+              <span className="fact">magic <b>{monster.d.magic}</b></span>
+            </div>
+          )}
+          {drainNote && <div className="warn">{drainNote}</div>}
+          {!monster && <div className="warn">Pick a monster from the list to run a comparison.</div>}
         </section>
 
         <section className="panel">
@@ -701,15 +677,12 @@ export default function App() {
               />
             </label>
             <label>
-              <span>Trials</span>
+              <span>Trials {kills > 1 && effectiveTrials !== trials ? `(${effectiveTrials.toLocaleString()} trips x ${kills} kills)` : ''}</span>
               <select value={trials} onChange={(e) => setTrials(Number(e.target.value))}>
                 <option value={5000}>5,000 (fast)</option>
                 <option value={20000}>20,000</option>
                 <option value={100000}>100,000 (precise)</option>
               </select>
-              {kills > 1 && effectiveTrials !== trials && (
-                <small className="hint">{effectiveTrials.toLocaleString()} trips x {kills} kills</small>
-              )}
             </label>
           </div>
           <div className="row">
@@ -727,15 +700,14 @@ export default function App() {
                 onChange={(e) => setDowntimeSeconds(Math.max(0, Number(e.target.value) || 0))}
               />
             </label>
+            <label>
+              <span>Banking time (s, optional) (Dead time; you return with 100% spec)</span>
+              <input
+                type="number" min={0} max={900} value={bankingSeconds}
+                onChange={(e) => setBankingSeconds(Math.max(0, Number(e.target.value) || 0))}
+              />
+            </label>
           </div>
-          <label>
-            <span>Banking time per trip (s, optional)</span>
-            <input
-              type="number" min={0} max={900} value={bankingSeconds}
-              onChange={(e) => setBankingSeconds(Math.max(0, Number(e.target.value) || 0))}
-            />
-            <small className="hint">Dead time; you return with 100% spec.</small>
-          </label>
           <label className="check">
             <input
               type="checkbox" checked={compareLightbearer}
@@ -743,42 +715,12 @@ export default function App() {
             />
             Compare Lightbearer (swaps your ring, doubles spec regen)
           </label>
+          <button className="primary" style={{ marginTop: "16px", width: "100%" }} onClick={run} disabled={running || !monster}>{running ? "Simulating..." : "Compare specs"}</button>
         </section>
       </div>
 
       <div className="layout">
         <div>
-          <section className="panel">
-            <h2>Target</h2>
-            <label>
-              <span>Monster</span>
-              <input
-                list="monster-list"
-                value={monsterQuery}
-                onChange={(e) => setMonsterQuery(e.target.value)}
-                placeholder="Search a monster..."
-              />
-            </label>
-            <datalist id="monster-list">
-              {monsterOptions.map((m, i) => (
-                <option key={`${m.id}-${m.version}-${i}`} value={monsterLabel(m)} />
-              ))}
-            </datalist>
-
-            {monster && (
-              <div className="target-facts">
-                <span className="fact"><b>{monster.hp}</b> HP</span>
-                <span className="fact"><b>{monster.def}</b> def</span>
-                <span className="fact">stab <b>{monster.d.stab}</b></span>
-                <span className="fact">slash <b>{monster.d.slash}</b></span>
-                <span className="fact">crush <b>{monster.d.crush}</b></span>
-                <span className="fact">magic <b>{monster.d.magic}</b></span>
-              </div>
-            )}
-            {drainNote && <div className="warn">{drainNote}</div>}
-            {!monster && <div className="warn">Pick a monster from the list to run a comparison.</div>}
-          </section>
-
           <section className="panel">
             <h2>Your normal setup</h2>
             <div className="tab-bar">
