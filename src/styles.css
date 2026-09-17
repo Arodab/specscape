@@ -1,11 +1,11 @@
 :root {
-  --bg: #16130f;
-  --panel: #1f1b16;
-  --panel-2: #272219;
-  --line: #3a3128;
-  --text: #e8e0d2;
-  --muted: #9c917f;
-  --accent: #f0a63c;
+  --bg: #140d0d;
+  --panel: #1f1414;
+  --panel-2: #291a1a;
+  --line: #3d2626;
+  --text: #ebd5d5;
+  --muted: #a38989;
+  --accent: #e63939;
   --good: #6fbf5e;
   --bad: #d4594b;
   --radius: 8px;
@@ -59,16 +59,16 @@ header p {
   color: var(--accent);
   text-decoration: none;
   font-size: 13px;
-  background: rgba(240, 166, 60, 0.1);
+  background: rgba(230, 57, 57, 0.1);
   padding: 6px 12px;
   border-radius: 6px;
-  border: 1px solid rgba(240, 166, 60, 0.2);
+  border: 1px solid rgba(230, 57, 57, 0.2);
   transition: all 0.2s ease;
 }
 
 .header-links a:hover {
-  background: rgba(240, 166, 60, 0.15);
-  border-color: rgba(240, 166, 60, 0.4);
+  background: rgba(230, 57, 57, 0.15);
+  border-color: rgba(230, 57, 57, 0.4);
 }
 
 .layout {
@@ -137,7 +137,7 @@ input:focus, select:focus {
 button.primary {
   width: 100%;
   background: var(--accent);
-  color: #201703;
+  color: #ffffff;
   border: none;
   border-radius: 6px;
   padding: 10px;
@@ -177,10 +177,10 @@ button.link {
   margin-top: 10px;
   padding: 8px 10px;
   border-radius: 6px;
-  background: rgba(240, 166, 60, 0.1);
-  border: 1px solid rgba(240, 166, 60, 0.35);
+  background: rgba(230, 57, 57, 0.1);
+  border: 1px solid rgba(230, 57, 57, 0.35);
   font-size: 12.5px;
-  color: #f4c47e;
+  color: #ffb3b3;
 }
 
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
@@ -336,7 +336,7 @@ footer a { color: var(--accent); }
   cursor: pointer;
 }
 .picker-row:hover { background: var(--panel-2); }
-.picker-row.selected { background: rgba(240, 166, 60, 0.14); }
+.picker-row.selected { background: rgba(230, 57, 57, 0.14); }
 .picker-empty { padding: 20px; text-align: center; color: var(--muted); }
 
 .switch-body {
@@ -418,8 +418,8 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--bad); color: var(-
 .spec-name { cursor: help; }
 
 .bane-badge {
-  background: rgba(240, 166, 60, 0.16);
-  border: 1px solid rgba(240, 166, 60, 0.45);
+  background: rgba(230, 57, 57, 0.16);
+  border: 1px solid rgba(230, 57, 57, 0.45);
   color: var(--accent);
   border-radius: 999px;
   padding: 1px 7px;
@@ -440,3 +440,4 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--bad); color: var(-
 @media (max-width: 900px) {
   .top-panels { grid-template-columns: 1fr; }
 }
+
