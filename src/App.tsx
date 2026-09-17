@@ -684,7 +684,10 @@ export default function App() {
                 <option value={100000}>100,000 (precise)</option>
               </select>
             </label>
-          </div>`n          <div className="row-3">`n            <label>`n              <span>Kills per trip</span>
+          </div>
+          <div className="row-3">
+            <label>
+              <span>Kills per trip</span>
               <input
                 type="number" min={1} max={200} value={kills}
                 onChange={(e) => setKills(Math.max(1, Number(e.target.value) || 1))}
@@ -993,6 +996,7 @@ export default function App() {
 }
 
 export { itemLabel };
+
 
 
 
