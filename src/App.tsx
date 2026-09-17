@@ -48,6 +48,37 @@ export default function App() {
   const [dataError, setDataError] = useState<string | null>(null);
 
   const [encounters, setEncounters] = useState<EncounterDef[]>([{ id: crypto.randomUUID(), monsterId: DEFAULT_MONSTER, styleTab: 'melee', count: 1, downtimeSeconds: 0 }]);
+  const loadPreset = (preset: 'toa' | 'tob' | 'cox') => {
+    let list: any[] = [];
+    if (preset === 'toa') {
+      list = [
+        { id: crypto.randomUUID(), monsterId: 'Zebak (Normal)', styleTab: 'ranged', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Kephri (Normal)', styleTab: 'melee', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Akkha (Normal)', styleTab: 'melee', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Ba-Ba (Normal)', styleTab: 'melee', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: "Tumeken's Warden (Active)", styleTab: 'magic', count: 1, downtimeSeconds: 15 },
+      ];
+    } else if (preset === 'tob') {
+      list = [
+        { id: crypto.randomUUID(), monsterId: 'The Maiden of Sugadinti (Normal)', styleTab: 'magic', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Pestilent Bloat (Normal)', styleTab: 'melee', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Nylocas Vasilias (Normal)', styleTab: 'melee', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Sotetseg (Normal)', styleTab: 'melee', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Xarpus (Normal mode)', styleTab: 'melee', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Verzik Vitur (Normal mode, Phase 3)', styleTab: 'melee', count: 1, downtimeSeconds: 15 },
+      ];
+    } else if (preset === 'cox') {
+      list = [
+        { id: crypto.randomUUID(), monsterId: 'Tekton (Normal)', styleTab: 'melee', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Muttadile (Large)', styleTab: 'ranged', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Vanguard (Melee)', styleTab: 'melee', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Vasa Nistirio (Normal)', styleTab: 'ranged', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Vespula (Normal)', styleTab: 'ranged', count: 1, downtimeSeconds: 15 },
+        { id: crypto.randomUUID(), monsterId: 'Great Olm (Head (Normal))', styleTab: 'magic', count: 1, downtimeSeconds: 15 },
+      ];
+    }
+    setEncounters(list);
+  };
   const [activeTab, setActiveTab] = useState<TabKind>('melee');
   const [tabs, setTabs] = useState<Record<TabKind, { gear: GearSet, presetId: string, prayerKey: string, styleIndex: number, potionId: string, spellName: string }>>({
     melee: { gear: {}, presetId: DEFAULT_PRESET, prayerKey: 'piety', styleIndex: 0, potionId: 'super_combat', spellName: '' },
@@ -774,13 +805,19 @@ export default function App() {
               </div>
             ))}
           </div>
-          <button
-            className="mini"
-            style={{ marginTop: "8px" }}
-            onClick={() => setEncounters([...encounters, { id: crypto.randomUUID(), monsterId: DEFAULT_MONSTER, styleTab: 'melee', count: 1, downtimeSeconds: 0 }])}
-          >
-            + Add encounter
-          </button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+            <button
+              className="mini"
+              onClick={() => setEncounters([...encounters, { id: crypto.randomUUID(), monsterId: DEFAULT_MONSTER, styleTab: 'melee', count: 1, downtimeSeconds: 0 }])}
+            >
+              + Add encounter
+            </button>
+            <div style={{ flex: 1 }} />
+            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Presets:</span>
+            <button className="mini" onClick={() => loadPreset('toa')}>ToA</button>
+            <button className="mini" onClick={() => loadPreset('tob')}>ToB</button>
+            <button className="mini" onClick={() => loadPreset('cox')}>CoX</button>
+          </div>
           <datalist id="monster-list">
             {monsters.map((m, i) => (
               <option key={`${m.id}-${m.version}-${i}`} value={monsterLabel(m)} />
@@ -1105,6 +1142,8 @@ export default function App() {
 }
 
 export { itemLabel };
+
+
 
 
 
