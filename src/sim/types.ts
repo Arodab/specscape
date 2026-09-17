@@ -89,6 +89,8 @@ export interface SpecResult {
   meanSeconds: number;
   /** Mean duration of a whole trip, including downtime between kills. */
   tripSeconds: number;
+  /** Stats for each specific encounter in the sequence. */
+  breakdown?: Omit<SpecResult, 'specId' | 'specName' | 'breakdown'>[];
   /** Mean spec energy spent per kill. */
   energyUsed: number;
   /** Mean number of spec attacks over the whole trip. */
@@ -102,3 +104,4 @@ export interface SpecResult {
   /** Histogram of kill times in ticks, for the distribution view. */
   hist: { tick: number; count: number }[];
 }
+

@@ -81,6 +81,7 @@ export default function App() {
     setEncounters(list);
   };
   const [activeTab, setActiveTab] = useState<TabKind>('melee');
+  const [resultTab, setResultTab] = useState<number>(-1); // -1 = Overall, enc index for per-monster breakdown
   const [tabs, setTabs] = useState<Record<TabKind, { gear: GearSet, presetId: string, prayerKey: string, styleIndex: number, potionId: string, spellName: string }>>({
     melee: { gear: {}, presetId: DEFAULT_PRESET, prayerKey: 'piety', styleIndex: 0, potionId: 'super_combat', spellName: '' },
     ranged: { gear: {}, presetId: 'max_ranged_tbow', prayerKey: 'rigour', styleIndex: 0, potionId: 'ranging', spellName: '' },
@@ -287,7 +288,32 @@ export default function App() {
 
     const prev = loadSession();
     if (!prev || (!prev.tabs && (!prev.gear || !Object.keys(prev.gear).length))) {
-      applyPreset('max_melee_scythe', 'melee'); applyPreset('max_ranged_tbow', 'ranged'); applyPreset('max_magic_shadow', 'magic');
+      // Build all 3 default tabs in one shot to avoid 3 separate renders triggering 3 sims.
+      const buildTabFromPreset = (id: string) => {
+        const preset = PRESETS.find(p => p.id === id)!;
+        const nextGear: GearSet = {};
+        for (const [slot, ref] of Object.entries(preset.gear)) {
+          if (!ref) continue;
+          const { name, version } = parseGearRef(ref as string);
+          const hit = pickVariant(equipment.filter(e => e.name === name && (version === null || e.version === version)));
+          if (hit) nextGear[slot as Slot] = hit;
+        }
+        const nextStyles = stylesFor(nextGear);
+        const idx = nextStyles.findIndex(s => s.name === preset.styleName);
+        return {
+          gear: nextGear,
+          presetId: id,
+          prayerKey: preset.prayer,
+          spellName: preset.spell ?? '',
+          styleIndex: idx === -1 ? 0 : idx,
+          potionId: preset.type === 'ranged' ? 'ranging' : preset.type === 'magic' ? 'imbued_heart' : 'super_combat',
+        };
+      };
+      setTabs({
+        melee: buildTabFromPreset('max_melee_scythe'),
+        ranged: buildTabFromPreset('max_ranged_tbow'),
+        magic: buildTabFromPreset('max_magic_shadow'),
+      });
       return;
     }
 
@@ -745,7 +771,24 @@ export default function App() {
           </div>
           <div className="encounter-list" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {encounters.map((enc, i) => (
-              <div key={enc.id} className="encounter-row" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <div
+                key={enc.id}
+                className="encounter-row"
+                draggable
+                onDragStart={(ev) => { ev.dataTransfer.setData('text/plain', String(i)); ev.dataTransfer.effectAllowed = 'move'; }}
+                onDragOver={(ev) => ev.preventDefault()}
+                onDrop={(ev) => {
+                  ev.preventDefault();
+                  const from = Number(ev.dataTransfer.getData('text/plain'));
+                  if (from === i) return;
+                  const newE = [...encounters];
+                  const [moved] = newE.splice(from, 1);
+                  newE.splice(i, 0, moved);
+                  setEncounters(newE);
+                }}
+                style={{ display: 'flex', gap: '8px', alignItems: 'center', cursor: 'grab' }}
+              >
+                <span style={{ color: 'var(--muted)', fontSize: '14px', userSelect: 'none' }}>☰</span>
                 <input
                   list="monster-list"
                   value={enc.monsterId}
@@ -1026,34 +1069,60 @@ export default function App() {
               energy twice as fast.
             </p>
           )}
+          {rows && encounters.length > 1 && (
+              <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <button
+                  className={resultTab === -1 ? 'primary' : 'mini'}
+                  onClick={() => setResultTab(-1)}
+                  style={{ padding: '4px 10px' }}
+                >
+                  Overall
+                </button>
+                {encounters.map((enc, i) => (
+                  <button
+                    key={i}
+                    className={resultTab === i ? 'primary' : 'mini'}
+                    onClick={() => setResultTab(i)}
+                    style={{ padding: '4px 10px' }}
+                  >
+                    {enc.monsterId}
+                  </button>
+                ))}
+              </div>
+            )}
           {!rows && <div className="empty">Pick a target and setup, then hit Compare specs.</div>}
           {rows && (
             <table>
               <thead>
                 <tr>
                   <th>Spec</th>
-                  <th title="Mean time to complete the sequence">Sequence</th>
+                  <th title="Mean time to complete the sequence">Time</th>
                   <th title="Seconds saved per sequence versus not speccing at all">Saved</th>
                   {kills > 1 && (
                     <th title="Total time saved across the whole trip, including downtime">Trip</th>
                   )}
                   <th className="bar-cell" />
-                  {showLb && <th title="Sequence time wearing Lightbearer instead of your ring">LB sequence</th>}
+                  {showLb && <th title="Sequence time wearing Lightbearer instead of your ring">LB time</th>}
                   {showLb && <th title="Seconds the specs save within the Lightbearer setup">LB saved</th>}
                   <th title="Mean number of spec attacks over the whole trip">Casts</th>
                   <th title="Customise the gear this spec switches to" />
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => {
-                  const spec = SPECS.find((s) => s.id === r.specId);
-                  const isBaseline = r.specId === null;
+                {rows.map((r_full, i) => {
+                  const r = resultTab >= 0 ? (r_full.breakdown?.[resultTab] ?? r_full) : r_full;
+                  const spec = SPECS.find((s) => s.id === r_full.specId);
+                  const isBaseline = r_full.specId === null;
                   const best = !isBaseline && i === 1 && r.secondsSaved > 0;
                   const specItem = spec ? specWeaponItem(spec, equipment) : null;
                   const overrideCount = spec ? Object.keys(switches[spec.id] ?? {}).length : 0;
-                  const lb = lbById.get(r.specId);
+                  const lb_full = lbById.get(r_full.specId);
+                  const lb = lb_full && resultTab >= 0 ? (lb_full.breakdown?.[resultTab] ?? lb_full) : lb_full;
+                  const dispMaxSaved = resultTab >= 0
+                    ? Math.max(0, ...rows.map(rx => rx.breakdown?.[resultTab]?.secondsSaved ?? 0))
+                    : maxSaved;
                   return (
-                    <tr key={r.specId ?? 'baseline'} className={isBaseline ? 'baseline' : best ? 'best' : ''}>
+                    <tr key={r_full.specId ?? 'baseline'} className={isBaseline ? 'baseline' : best ? 'best' : ''}>
                       <td>
                         <div className="spec-cell">
                           {specItem && (
@@ -1062,7 +1131,7 @@ export default function App() {
                             </span>
                           )}
                           <span className="spec-name" title={spec?.note ?? undefined}>
-                            {r.specName}
+                            {r_full.specName}
                           </span>
                         </div>
                       </td>
@@ -1081,7 +1150,7 @@ export default function App() {
                         {!isBaseline && (
                           <div
                             className={`bar ${r.secondsSaved < 0 ? 'neg' : ''}`}
-                            style={{ width: `${(Math.abs(r.secondsSaved) / maxSaved) * 100}%` }}
+                            style={{ width: `${dispMaxSaved > 0 ? (Math.abs(r.secondsSaved) / dispMaxSaved) * 100 : 0}%` }}
                           />
                         )}
                       </td>
@@ -1117,7 +1186,7 @@ export default function App() {
       {editingSpec && (
         <SwitchesModal
           spec={editingSpec}
-          baseGear={gear}
+          baseGear={resultTab >= 0 && encounters[resultTab] ? tabs[encounters[resultTab].styleTab].gear : gear}
           tabs={tabs}
           specWeapon={specWeaponItem(editingSpec, equipment)}
           overrides={switches[editingSpec.id] ?? {}}
