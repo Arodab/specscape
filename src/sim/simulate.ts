@@ -19,7 +19,6 @@ import type { Monster, MonsterState, SimOptions, SpecResult, Loadout } from './t
 
 /** Special attack energy regenerates 10% every 50 ticks (30s), doubled by Lightbearer. */
 const REGEN_TICKS = 50;
-const REGEN_AMOUNT = 10;
 
 /** Safety valve so a setup that cannot damage the target can never hang the worker. */
 const MAX_TICKS = 20_000;
@@ -27,6 +26,7 @@ const MAX_TICKS = 20_000;
 export interface SimInput {
   encounters: import('./types').SimEncounter[];
   specId: string | null;
+  followUpSpecId?: string | null;
   opts: SimOptions;
 }
 
@@ -53,18 +53,17 @@ interface EnergyState {
   regenCounter: number;
 }
 
-const makeAdvance = (opts: SimOptions, energy: EnergyState, onTick: () => void) => {
-  const period = opts.lightbearer ? REGEN_TICKS / 2 : REGEN_TICKS;
-  return (n: number): void => {
-    for (let i = 0; i < n; i++) {
-      onTick();
-      energy.regenCounter--;
-      if (energy.regenCounter <= 0) {
-        energy.energy = Math.min(100, energy.energy + REGEN_AMOUNT);
-        energy.regenCounter = period;
+/** Returns a function to advance time, regenerating energy. */
+const makeAdvance = (opts: SimOptions, state: EnergyState, tickCb: () => void) => (ticks: number) => {
+  for (let i = 0; i < ticks; i++) {
+    tickCb();
+    if (state.energy < 100) {
+      if (--state.regenCounter <= 0) {
+        state.energy = Math.min(100, state.energy + 10);
+        state.regenCounter = opts.lightbearer ? REGEN_TICKS / 2 : REGEN_TICKS;
       }
     }
-  };
+  }
 };
 
 interface KillOutcome {
@@ -80,6 +79,7 @@ interface KillOutcome {
 const simulateKill = (
   encounter: import('./types').SimEncounter,
   spec: { def: SpecDef, load: Loadout } | null,
+  followUp: { def: SpecDef, load: Loadout } | null,
   opts: SimOptions,
   rng: () => number,
   energy: EnergyState,
@@ -93,30 +93,51 @@ const simulateKill = (
   let ticks = 0;
   let energySpent = 0;
   let casts = 0;
+  let primaryCasts = 0;
   /**
    * Defence drains are only worth using before you start hitting the target,
    * so once the main weapon swings, 'opening' specs are locked out for this kill.
    */
   let openingOver = false;
+  let specHits = 0;
 
   const advance = makeAdvance(opts, energy, () => { ticks++; });
 
   while (state.hp > 0 && ticks < MAX_TICKS) {
-    const canSpec = spec
-      && energy.energy >= spec.def.cost
-      && (specPolicy(spec.def) === 'greedy' || !openingOver)
+    let activeSpec = spec;
+    let isActiveFollowUp = false;
+
+    if (spec) {
+      const primaryCanSpec = energy.energy >= spec.def.cost
+        && (specPolicy(spec.def) === 'greedy' || !openingOver)
+        && (spec.def.maxCasts === undefined || primaryCasts < spec.def.maxCasts)
+        && (spec.def.stopOnHit !== true || specHits === 0)
+        && (isLastKill || state.hp > main.maxHit);
+
+      if (!primaryCanSpec && followUp) {
+        activeSpec = followUp;
+        isActiveFollowUp = true;
+      }
+    } else if (followUp) {
+      activeSpec = followUp;
+      isActiveFollowUp = true;
+    }
+
+    const canSpec = activeSpec
+      && energy.energy >= activeSpec.def.cost
+      && (specPolicy(activeSpec.def) === 'greedy' || !openingOver)
       && (isLastKill || state.hp > main.maxHit);
 
-    if (spec && canSpec) {
-      const acc = spec.def.guaranteed
+    if (activeSpec && canSpec) {
+      const acc = activeSpec.def.guaranteed
         ? 1
-        : accuracy(spec.load, monster, state, {
-            styleOverride: spec.def.defStyle,
-            accuracyMultiplier: spec.def.accMult,
+        : accuracy(activeSpec.load, monster, state, {
+            styleOverride: activeSpec.def.defStyle,
+            accuracyMultiplier: activeSpec.def.accMult,
           });
 
       const ctx: SpecCtx = {
-        load: spec.load,
+        load: activeSpec.load,
         acc,
         rng,
         state,
@@ -125,13 +146,21 @@ const simulateKill = (
         options: opts.specOptions,
       };
 
-      const specMax = spec.def.maxHit(spec.load.maxHit);
-      applyHits(state, spec.def.hits(ctx, specMax));
+      const specMax = activeSpec.def.maxHit(activeSpec.load.maxHit);
+      const hits = activeSpec.def.hits(ctx, specMax);
+      applyHits(state, hits);
 
-      energy.energy -= spec.def.cost;
-      energySpent += spec.def.cost;
+      if (!isActiveFollowUp && hits.some(h => h > 0)) {
+        specHits++;
+      }
+
+      energy.energy -= activeSpec.def.cost;
+      energySpent += activeSpec.def.cost;
       casts++;
-      advance(spec.def.speed);
+      if (!isActiveFollowUp) {
+        primaryCasts++;
+      }
+      advance(activeSpec.def.speed);
       continue;
     }
 
@@ -161,7 +190,12 @@ interface TripOutcome {
   encCasts: number[];
 }
 
-const simulateTrip = (input: SimInput, precomputedSpecs: ({ def: SpecDef, load: Loadout } | null)[], rng: () => number): TripOutcome => {
+const simulateTrip = (
+  input: SimInput,
+  precomputedSpecs: ({ def: SpecDef, load: Loadout } | null)[],
+  precomputedFollowUp: ({ def: SpecDef, load: Loadout } | null)[],
+  rng: () => number
+): TripOutcome => {
   const { opts, encounters } = input;
   const loops = Math.max(1, opts.kills); // opts.kills now represents loops per trip
   const energy: EnergyState = {
@@ -193,7 +227,7 @@ const simulateTrip = (input: SimInput, precomputedSpecs: ({ def: SpecDef, load: 
       let eT = 0;
       for (let k = 0; k < enc.count; k++) {
         const isLastKill = isLastEncounterInTrip && (k === enc.count - 1);
-        const r = simulateKill(enc, precomputedSpecs[eIdx], opts, rng, energy, isLastKill);
+        const r = simulateKill(enc, precomputedSpecs[eIdx], precomputedFollowUp[eIdx], opts, rng, energy, isLastKill);
         eT += r.ticks;
         encEnergy[eIdx] += r.energySpent;
         encCasts[eIdx] += r.casts;
@@ -229,25 +263,34 @@ const histogram = (ticks: number[], buckets = 40): { tick: number; count: number
   }
   if (max === min) return [{ tick: min, count: ticks.length }];
   const width = (max - min) / buckets;
-  const counts = new Array(buckets).fill(0);
+  const out = Array.from({ length: buckets }, (_, i) => ({ tick: min + i * width, count: 0 }));
   for (const t of ticks) {
-    counts[Math.min(buckets - 1, Math.floor((t - min) / width))]++;
+    const idx = Math.min(buckets - 1, Math.floor((t - min) / width));
+    out[idx].count++;
   }
-  return counts.map((count, i) => ({ tick: Math.round(min + (i + 0.5) * width), count }));
+  return out;
 };
 
 type RawResult = Omit<SpecResult, 'secondsSaved' | 'secondsPer100Energy' | 'tripSecondsSaved'>;
 
 /** Run the full Monte Carlo for one spec option (or the no-spec baseline). */
 export const runSim = (input: SimInput): RawResult => {
-  const { opts, specId, encounters } = input;
+  const { opts, specId, followUpSpecId, encounters } = input;
   const rng = mulberry32(opts.seed);
   const loops = Math.max(1, opts.kills);
+  
   const specDef = specId ? specById(specId) : null;
   const precomputedSpecs = encounters.map(enc => {
     const load = specId ? enc.specLoads[specId] : null;
     return specDef && load ? { def: specDef, load } : null;
   });
+
+  const followUpDef = followUpSpecId ? specById(followUpSpecId) : null;
+  const precomputedFollowUp = encounters.map(enc => {
+    const load = followUpSpecId ? enc.specLoads[followUpSpecId] : null;
+    return followUpDef && load ? { def: followUpDef, load } : null;
+  });
+
   const trips = opts.trials;
 
   const totalKillsPerTrip = encounters.reduce((sum, e) => sum + e.count, 0) * loops;
@@ -263,7 +306,7 @@ export const runSim = (input: SimInput): RawResult => {
   const encCastsSum = encounters.map(() => 0);
 
   for (let i = 0; i < trips; i++) {
-    const r = simulateTrip(input, precomputedSpecs, rng);
+    const r = simulateTrip(input, precomputedSpecs, precomputedFollowUp, rng);
     totalTripTicks += r.totalTicks;
     totalEnergy += r.energySpent;
     totalCasts += r.casts;
@@ -322,11 +365,12 @@ export const compareSpecs = (
   encounters: import('./types').SimEncounter[],
   specIds: string[],
   opts: SimOptions,
+  followUpSpecId?: string | null,
 ): SpecResult[] => {
-  const baseline = runSim({ encounters, specId: null, opts });
+  const baseline = runSim({ encounters, specId: null, followUpSpecId, opts });
 
   const rows: SpecResult[] = specIds.map((specId) => {
-    const r = runSim({ encounters, specId, opts });
+    const r = runSim({ encounters, specId, followUpSpecId, opts });
     const secondsSaved = baseline.meanSeconds - r.meanSeconds;
 
     // Fill in per-encounter secondsSaved by comparing against baseline breakdown

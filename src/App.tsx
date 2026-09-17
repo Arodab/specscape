@@ -106,6 +106,7 @@ export default function App() {
   const [editingSpec, setEditingSpec] = useState<SpecDef | null>(null);
 
   const [enabled, setEnabled] = useState<Set<string>>(() => new Set(SPECS.map((s) => s.id)));
+  const [followUpSpecId, setFollowUpSpecId] = useState<string | null>(null);
   const [startEnergy, setStartEnergy] = useState(100);
   const [trials, setTrials] = useState(5000);
   const [kills, setKills] = useState(1);
@@ -353,6 +354,7 @@ export default function App() {
     setBuffs(prev.buffs ?? DEFAULT_BUFFS);
     setSwitches(prev.switches ?? {});
     if (prev.enabledSpecs?.length) setEnabled(new Set(prev.enabledSpecs));
+    if (prev.followUpSpecId !== undefined) setFollowUpSpecId(prev.followUpSpecId);
     if (typeof prev.startEnergy === 'number') setStartEnergy(prev.startEnergy);
     if (typeof prev.trials === 'number') setTrials(prev.trials);
     if (typeof prev.kills === 'number') setKills(prev.kills);
@@ -379,6 +381,7 @@ export default function App() {
       lockedSlots: [...sharedSlots],
       levels, buffs, switches,
       enabledSpecs: [...enabled],
+      followUpSpecId,
       startEnergy, trials, kills, bankingSeconds,
       compareLightbearer, setupName,
     };
@@ -490,6 +493,7 @@ export default function App() {
         key,
         encounters: finalEncounters,
         specIds: [...enabled],
+        followUpSpecId,
         opts: { ...baseOpts, lightbearer },
       };
     };
@@ -671,7 +675,7 @@ export default function App() {
 
   const currentShareable = () => ({
     encounters, tabs, activeTab, lockedSlots: [...sharedSlots],
-    levels, buffs, switches, enabledSpecs: [...enabled], specOptions,
+    levels, buffs, switches, enabledSpecs: [...enabled], followUpSpecId, specOptions,
     startEnergy, kills, bankingSeconds, compareLightbearer,
   });
 
@@ -714,6 +718,7 @@ export default function App() {
     setBuffs(decoded.buffs);
     setSwitches(decoded.switches);
     if (decoded.enabledSpecs.length) setEnabled(new Set(decoded.enabledSpecs));
+    if (decoded.followUpSpecId !== undefined) setFollowUpSpecId(decoded.followUpSpecId);
     if (Object.keys(decoded.specOptions).length) setSpecOptions(decoded.specOptions);
     setStartEnergy(decoded.startEnergy);
     setKills(decoded.kills);
@@ -1088,6 +1093,21 @@ export default function App() {
                 {sp.option!.label}
               </label>
             ))}
+          </section>
+          <section className="panel">
+            <label className="field-group">
+              <span>Follow-up DPS spec</span>
+              <select
+                value={followUpSpecId ?? ''}
+                onChange={(e) => setFollowUpSpecId(e.target.value || null)}
+              >
+                <option value="">None (Main weapon only)</option>
+                {SPECS.filter(s => !s.drains).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              <div className="help-text">Used to spend remaining energy if the primary spec finishes or misses.</div>
+            </label>
           </section>
 
         </div>

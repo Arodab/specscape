@@ -54,6 +54,7 @@ export interface SessionState {
   buffs: Buffs;
   switches: SpecSwitches;
   enabledSpecs: string[];
+  followUpSpecId?: string | null;
   startEnergy: number;
   trials: number;
   kills: number;

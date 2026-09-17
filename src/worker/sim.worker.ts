@@ -16,6 +16,7 @@ export interface SimVariant {
   key: string;
   encounters: import('../sim/types').SimEncounter[];
   specIds: string[];
+  followUpSpecId?: string | null;
   opts: SimOptions;
 }
 
@@ -33,7 +34,7 @@ self.onmessage = (ev: MessageEvent<SimRequest>) => {
   try {
     const results: Record<string, SpecResult[]> = {};
     for (const variant of variants) {
-      results[variant.key] = compareSpecs(variant.encounters, variant.specIds, variant.opts);
+      results[variant.key] = compareSpecs(variant.encounters, variant.specIds, variant.opts, variant.followUpSpecId);
     }
     const res: SimResponse = { id, ok: true, results };
     self.postMessage(res);

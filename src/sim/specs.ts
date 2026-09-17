@@ -53,6 +53,10 @@ export interface SpecDef {
    * Defaults to 'opening' for drains and 'greedy' otherwise.
    */
   policy?: 'opening' | 'greedy';
+  /** If set, this spec cannot be cast more than this many times per kill. */
+  maxCasts?: number;
+  /** If set, this spec is no longer cast once it successfully hits at least once per kill. */
+  stopOnHit?: boolean;
   /** An optional per-spec toggle the UI renders next to the spec. */
   option?: { key: string; label: string; default: boolean };
   /**
@@ -251,9 +255,10 @@ export const SPECS: SpecDef[] = [
     accMult: 1,
     guaranteed: true,
     drains: true,
+    maxCasts: 1,
     policy: 'opening',
     option: { key: 'boneDaggerOpener', label: 'Bone dagger: 100% accuracy opener', default: true },
-    note: 'Drains Defence by the damage dealt. Guaranteed to hit as an opener, which is how it is normally used.',
+    note: 'Drains Defence by the damage dealt. Guaranteed to hit as an opener, which is how it is normally used. Can only be used once per target.',
     maxHit: (base) => base,
     hits: (ctx, specMax) => {
       const opener = ctx.options.boneDaggerOpener !== false;
@@ -353,16 +358,11 @@ export const SPECS: SpecDef[] = [
 
   // ---------- defence drain specs ----------
   {
-    id: 'dwh',
-    name: 'Dragon warhammer',
+    id: 'dwh_1',
+    name: 'Dragon warhammer (1 cast)',
     item: 'Dragon warhammer',
-    cost: 50,
-    speed: 6,
-    type: 'melee',
-    defStyle: 'crush',
-    accMult: 1,
-    drains: true,
-    note: 'Drains 30% of current Defence on hit - but gets NO accuracy bonus, so it often misses high-Defence targets.',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'crush', accMult: 1, drains: true, maxCasts: 1,
+    note: 'Drains 30% of current Defence on hit.',
     maxHit: (base) => factor(base, 3, 2),
     hits: (ctx, specMax) => {
       if (!rollHit(ctx)) return [0];
@@ -371,16 +371,24 @@ export const SPECS: SpecDef[] = [
     },
   },
   {
-    id: 'elder_maul',
-    name: 'Elder maul',
+    id: 'dwh_hit',
+    name: 'Dragon warhammer (until 1 lands)',
+    item: 'Dragon warhammer',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'crush', accMult: 1, drains: true, stopOnHit: true,
+    note: 'Drains 30% of current Defence on hit. Stops casting once a hit lands.',
+    maxHit: (base) => factor(base, 3, 2),
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      reduceDef(ctx, (cur) => cur - factor(cur, 3, 10));
+      return [uniformDamage(ctx, specMax)];
+    },
+  },
+  {
+    id: 'elder_maul_1',
+    name: 'Elder maul (1 cast)',
     item: 'Elder maul',
-    cost: 50,
-    speed: 6,
-    type: 'melee',
-    defStyle: 'crush',
-    accMult: 1.25,
-    drains: true,
-    note: 'Drains 35% of current Defence with 1.25x accuracy - a strictly better drain than DWH.',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'crush', accMult: 1.25, drains: true, maxCasts: 1,
+    note: 'Drains 35% of current Defence on hit.',
     maxHit: (base) => base,
     hits: (ctx, specMax) => {
       if (!rollHit(ctx)) return [0];
@@ -389,16 +397,38 @@ export const SPECS: SpecDef[] = [
     },
   },
   {
-    id: 'bgs',
-    name: 'Bandos godsword',
+    id: 'elder_maul_hit',
+    name: 'Elder maul (until 1 lands)',
+    item: 'Elder maul',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'crush', accMult: 1.25, drains: true, stopOnHit: true,
+    note: 'Drains 35% of current Defence on hit. Stops casting once a hit lands.',
+    maxHit: (base) => base,
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      reduceDef(ctx, (cur) => cur - factor(cur, 35, 100));
+      return [uniformDamage(ctx, specMax)];
+    },
+  },
+  {
+    id: 'bgs_1',
+    name: 'Bandos godsword (1 cast)',
     item: 'Bandos godsword',
-    cost: 50,
-    speed: 6,
-    type: 'melee',
-    defStyle: 'slash',
-    accMult: 2,
-    drains: true,
-    note: 'Drains Defence by the damage dealt. Best as a follow-up once Defence is already low.',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'slash', accMult: 2, drains: true, maxCasts: 1,
+    note: 'Drains Defence by the damage dealt.',
+    maxHit: (base) => factor(factor(base, 11, 10), 11, 10),
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      const dmg = uniformDamage(ctx, specMax);
+      reduceDef(ctx, (cur) => cur - dmg);
+      return [dmg];
+    },
+  },
+  {
+    id: 'bgs_hit',
+    name: 'Bandos godsword (until 1 lands)',
+    item: 'Bandos godsword',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'slash', accMult: 2, drains: true, stopOnHit: true,
+    note: 'Drains Defence by the damage dealt. Stops casting once a hit lands.',
     maxHit: (base) => factor(factor(base, 11, 10), 11, 10),
     hits: (ctx, specMax) => {
       if (!rollHit(ctx)) return [0];
@@ -478,6 +508,37 @@ export const SPECS: SpecDef[] = [
       return [uniformDamage(ctx, specMax)];
     },
   },
+  {
+    id: 'arkan',
+    name: 'Arkan blade',
+    item: 'Arkan blade',
+    cost: 50,
+    speed: 4,
+    type: 'melee',
+    defStyle: 'slash',
+    accMult: 1,
+    note: 'Attacks with a 25% increase in max hit, and lowers their Magic level by 5% + 1.',
+    maxHit: (base) => factor(base, 5, 4),
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      const dmg = uniformDamage(ctx, specMax);
+      ctx.state.magic = Math.max(0, ctx.state.magic - factor(ctx.state.magic, 5, 100) - 1);
+      return [dmg];
+    },
+  },
+  {
+    id: 'd_thrownaxe',
+    name: 'Dragon thrownaxe',
+    item: 'Dragon thrownaxe',
+    cost: 25,
+    speed: 1,
+    type: 'ranged',
+    defStyle: 'standard',
+    accMult: 1.25,
+    note: 'Throws an axe with 25% increased accuracy. Attacks incredibly fast.',
+    maxHit: (base) => base,
+    hits: (ctx, specMax) => rollHit(ctx) ? [uniformDamage(ctx, specMax)] : [0],
+  }
 ];
 
 export const specById = (id: string): SpecDef | undefined => SPECS.find((s) => s.id === id);

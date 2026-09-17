@@ -45,6 +45,7 @@ export interface ShareableSetup {
   buffs: Buffs;
   switches: SpecSwitches;
   enabledSpecs: string[];
+  followUpSpecId?: string | null;
   specOptions: Record<string, boolean>;
   startEnergy: number;
   kills: number;
