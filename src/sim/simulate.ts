@@ -114,7 +114,7 @@ const simulateKill = (
         && (spec.def.stopOnHit !== true || specHits === 0)
         && (isLastKill || state.hp > main.maxHit);
 
-      if (!primaryCanSpec && followUp) {
+      if (!primaryCanSpec) {
         activeSpec = followUp;
         isActiveFollowUp = true;
       }
