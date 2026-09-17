@@ -182,16 +182,38 @@ const collapseCosmeticVariants = (items) => {
   });
 };
 
+async function getCategory(cat) {
+  const pages = [];
+  let cmcontinue = '';
+  while (true) {
+    const res = await fetch(`https://oldschool.runescape.wiki/api.php?action=query&list=categorymembers&cmtitle=${cat}&cmlimit=500&format=json&cmcontinue=${cmcontinue}`);
+    const d = await res.json();
+    pages.push(...d.query.categorymembers.map((x) => x.title));
+    if (!d.continue) break;
+    cmcontinue = d.continue.cmcontinue;
+  }
+  return pages;
+}
+
 const main = async () => {
   await mkdir(OUT, { recursive: true });
 
-  const [monsters, equipment, spells] = await Promise.all([
+  const [monsters, equipment, spells, bosses, cox, tob, toa] = await Promise.all([
     get('monsters.json'),
     get('equipment.json'),
     get('spells.json'),
+    getCategory('Category:Bosses'),
+    getCategory('Category:Chambers_of_Xeric'),
+    getCategory('Category:Theatre_of_Blood'),
+    getCategory('Category:Tombs_of_Amascut')
   ]);
 
-  const baseMonsters = monsters.filter(usableMonster).map(slimMonster);
+  const keepSet = new Set([...bosses, ...cox, ...tob, ...toa].map(x => x.toLowerCase()));
+
+  const baseMonsters = monsters
+    .filter(usableMonster)
+    .filter((x) => x.is_slayer_monster || keepSet.has(x.name.toLowerCase()))
+    .map(slimMonster);
 
   /**
    * The Doom of Mokhaiotl's "Melee Punish" window drops its defence roll to 15%
