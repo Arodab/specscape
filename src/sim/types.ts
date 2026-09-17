@@ -50,6 +50,14 @@ export interface Loadout {
   ammoName?: string | null;
 }
 
+export interface SimEncounter {
+  monster: Monster;
+  main: Loadout;
+  specLoads: Record<string, Loadout>;
+  count: number;
+  downtimeTicks: number; // Converted from seconds
+}
+
 export interface SimOptions {
   /** Starting special attack energy, 0-100. */
   startEnergy: number;

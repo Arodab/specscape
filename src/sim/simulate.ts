@@ -1,7 +1,7 @@
 import { accuracy } from './combat';
 import { mulberry32, randInt } from './rng';
-import { specPolicy, type SpecCtx, type SpecDef } from './specs';
-import type { Loadout, Monster, MonsterState, SimOptions, SpecResult } from './types';
+import { specPolicy, specById, type SpecCtx, } from './specs';
+import type { Monster, MonsterState, SimOptions, SpecResult } from './types';
 
 /**
  * Monte Carlo kill simulation.
@@ -24,15 +24,9 @@ const REGEN_AMOUNT = 10;
 /** Safety valve so a setup that cannot damage the target can never hang the worker. */
 const MAX_TICKS = 20_000;
 
-export interface SpecWeapon {
-  def: SpecDef;
-  load: Loadout;
-}
-
 export interface SimInput {
-  monster: Monster;
-  main: Loadout;
-  spec: SpecWeapon | null;
+  encounters: import('./types').SimEncounter[];
+  specId: string | null;
   opts: SimOptions;
 }
 
@@ -84,12 +78,18 @@ interface KillOutcome {
  * energy state.
  */
 const simulateKill = (
-  input: SimInput,
+  encounter: import('./types').SimEncounter,
+  specId: string | null,
+  opts: SimOptions,
   rng: () => number,
   energy: EnergyState,
   isLastKill: boolean,
 ): KillOutcome => {
-  const { monster, main, spec, opts } = input;
+  const { monster, main, specLoads } = encounter;
+  const specLoad = specId ? specLoads[specId] : null;
+  const specDef = specId ? specById(specId) : null;
+  const spec = specDef && specLoad ? { def: specDef, load: specLoad } : null;
+
   const state = freshState(monster);
   const isDemon = monster.attributes.includes('demon');
 
@@ -161,8 +161,8 @@ interface TripOutcome {
 }
 
 const simulateTrip = (input: SimInput, rng: () => number): TripOutcome => {
-  const { opts } = input;
-  const kills = Math.max(1, opts.kills);
+  const { opts, encounters, specId } = input;
+  const loops = Math.max(1, opts.kills); // opts.kills now represents loops per trip
   const energy: EnergyState = {
     energy: opts.startEnergy,
     regenCounter: opts.lightbearer ? REGEN_TICKS / 2 : REGEN_TICKS,
@@ -174,26 +174,30 @@ const simulateTrip = (input: SimInput, rng: () => number): TripOutcome => {
   let casts = 0;
   const killTicks: number[] = [];
 
-  // Downtime still regenerates energy, which is exactly why cheap specs win trips.
   const idle = makeAdvance(opts, energy, () => { totalTicks++; });
 
-  for (let k = 0; k < kills; k++) {
-    const r = simulateKill(input, rng, energy, k === kills - 1);
-    combatTicks += r.ticks;
-    totalTicks += r.ticks;
-    energySpent += r.energySpent;
-    casts += r.casts;
-    killTicks.push(r.ticks);
+  for (let loop = 0; loop < loops; loop++) {
+    for (let eIdx = 0; eIdx < encounters.length; eIdx++) {
+      const enc = encounters[eIdx];
+      const isLastEncounterInTrip = (loop === loops - 1) && (eIdx === encounters.length - 1);
+      
+      // Downtime BEFORE this encounter starts
+      if (enc.downtimeTicks > 0) {
+        idle(enc.downtimeTicks);
+      }
 
-    if (k < kills - 1 && opts.downtimeTicks > 0) idle(opts.downtimeTicks);
+      for (let k = 0; k < enc.count; k++) {
+        const isLastKill = isLastEncounterInTrip && (k === enc.count - 1);
+        const r = simulateKill(enc, specId, opts, rng, energy, isLastKill);
+        combatTicks += r.ticks;
+        totalTicks += r.ticks;
+        energySpent += r.energySpent;
+        casts += r.casts;
+        killTicks.push(r.ticks);
+      }
+    }
   }
 
-  /**
-   * Banking closes the trip. The player comes back with full energy, so unlike
-   * downtime this is not a regeneration window - it is simply time on the clock.
-   * It is also identical for every spec, so it lengthens the trip without
-   * changing which spec comes out ahead.
-   */
   if (opts.bankingTicks > 0) {
     totalTicks += opts.bankingTicks;
     energy.energy = 100;
@@ -227,10 +231,12 @@ type RawResult = Omit<SpecResult, 'secondsSaved' | 'secondsPer100Energy' | 'trip
 
 /** Run the full Monte Carlo for one spec option (or the no-spec baseline). */
 export const runSim = (input: SimInput): RawResult => {
-  const { opts, spec } = input;
+  const { opts, specId, encounters } = input;
   const rng = mulberry32(opts.seed);
-  const kills = Math.max(1, opts.kills);
+  const loops = Math.max(1, opts.kills);
   const trips = opts.trials;
+
+  const totalKillsPerTrip = encounters.reduce((sum, e) => sum + e.count, 0) * loops;
 
   const allKillTicks: number[] = [];
   let totalTripTicks = 0;
@@ -249,17 +255,17 @@ export const runSim = (input: SimInput): RawResult => {
   const meanTicks = allKillTicks.reduce((a, b) => a + b, 0) / allKillTicks.length;
   const meanTripTicks = totalTripTicks / trips;
 
+  const specDef = specId ? specById(specId) : null;
+
   return {
-    specId: spec?.def.id ?? null,
-    specName: spec?.def.name ?? 'No spec (baseline)',
+    specId: specId,
+    specName: specDef?.name ?? 'No spec (baseline)',
     meanTicks,
     medianTicks: percentile(sorted, 0.5),
     p90Ticks: percentile(sorted, 0.9),
     meanSeconds: meanTicks * 0.6,
     tripSeconds: meanTripTicks * 0.6,
-    energyUsed: totalEnergy / trips / kills,
-    // Casts are reported per trip: "0.8 per kill" is far less useful than
-    // "8 casts over the trip" when deciding whether a spec is affordable.
+    energyUsed: totalKillsPerTrip > 0 ? (totalEnergy / trips / totalKillsPerTrip) : 0,
     meanSpecCasts: totalCasts / trips,
     hist: histogram(allKillTicks),
   };
@@ -270,15 +276,14 @@ export const runSim = (input: SimInput): RawResult => {
  * Results are sorted best-first by time saved.
  */
 export const compareSpecs = (
-  monster: Monster,
-  main: Loadout,
-  candidates: SpecWeapon[],
+  encounters: import('./types').SimEncounter[],
+  specIds: string[],
   opts: SimOptions,
 ): SpecResult[] => {
-  const baseline = runSim({ monster, main, spec: null, opts });
+  const baseline = runSim({ encounters, specId: null, opts });
 
-  const rows: SpecResult[] = candidates.map((spec) => {
-    const r = runSim({ monster, main, spec, opts });
+  const rows: SpecResult[] = specIds.map((specId) => {
+    const r = runSim({ encounters, specId, opts });
     const secondsSaved = baseline.meanSeconds - r.meanSeconds;
     return {
       ...r,

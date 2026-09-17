@@ -1,6 +1,5 @@
-import { compareSpecs, type SpecWeapon } from '../sim/simulate';
-import { specById } from '../sim/specs';
-import type { Loadout, Monster, SimOptions, SpecResult } from '../sim/types';
+import { compareSpecs } from '../sim/simulate';
+import type { SimOptions, SpecResult } from '../sim/types';
 
 /**
  * Runs the Monte Carlo off the main thread so a 50k-trial comparison never
@@ -15,14 +14,13 @@ import type { Loadout, Monster, SimOptions, SpecResult } from '../sim/types';
 
 export interface SimVariant {
   key: string;
-  main: Loadout;
-  specs: { id: string; load: Loadout }[];
+  encounters: import('../sim/types').SimEncounter[];
+  specIds: string[];
   opts: SimOptions;
 }
 
 export interface SimRequest {
   id: number;
-  monster: Monster;
   variants: SimVariant[];
 }
 
@@ -31,15 +29,11 @@ export type SimResponse =
   | { id: number; ok: false; error: string };
 
 self.onmessage = (ev: MessageEvent<SimRequest>) => {
-  const { id, monster, variants } = ev.data;
+  const { id, variants } = ev.data;
   try {
     const results: Record<string, SpecResult[]> = {};
     for (const variant of variants) {
-      const candidates: SpecWeapon[] = variant.specs.flatMap((s) => {
-        const def = specById(s.id);
-        return def ? [{ def, load: s.load }] : [];
-      });
-      results[variant.key] = compareSpecs(monster, variant.main, candidates, variant.opts);
+      results[variant.key] = compareSpecs(variant.encounters, variant.specIds, variant.opts);
     }
     const res: SimResponse = { id, ok: true, results };
     self.postMessage(res);

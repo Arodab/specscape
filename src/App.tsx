@@ -22,9 +22,9 @@ import {
 import { decodeSetup, encodeSetup } from './ui/sharecode';
 import {
   DEFAULT_MONSTER, DEFAULT_PRESET, clearSession, loadSession, saveSession,
-  type SessionState,
+  type SessionState, type EncounterDef, type TabKind
 } from './ui/session';
-import type { Monster, MonsterState, SpecResult } from './sim/types';
+import type { Monster, MonsterState, SpecResult, SimEncounter } from './sim/types';
 import type { SimRequest, SimResponse, SimVariant } from './worker/sim.worker';
 
 const BASE = import.meta.env.BASE_URL;
@@ -47,15 +47,15 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
 
-  const [monsterQuery, setMonsterQuery] = useState(DEFAULT_MONSTER);
-  const [activeTab, setActiveTab] = useState<'melee' | 'ranged' | 'magic'>('melee');
-  const [tabs, setTabs] = useState<Record<'melee' | 'ranged' | 'magic', { gear: GearSet, presetId: string, prayerKey: string, styleIndex: number, potionId: string, spellName: string }>>({
+  const [encounters, setEncounters] = useState<EncounterDef[]>([{ id: crypto.randomUUID(), monsterId: DEFAULT_MONSTER, styleTab: 'melee', count: 1, downtimeSeconds: 0 }]);
+  const [activeTab, setActiveTab] = useState<TabKind>('melee');
+  const [tabs, setTabs] = useState<Record<TabKind, { gear: GearSet, presetId: string, prayerKey: string, styleIndex: number, potionId: string, spellName: string }>>({
     melee: { gear: {}, presetId: DEFAULT_PRESET, prayerKey: 'piety', styleIndex: 0, potionId: 'super_combat', spellName: '' },
     ranged: { gear: {}, presetId: DEFAULT_PRESET, prayerKey: 'rigour', styleIndex: 0, potionId: 'ranging', spellName: '' },
     magic: { gear: {}, presetId: DEFAULT_PRESET, prayerKey: 'augury', styleIndex: 0, potionId: 'imbued_heart', spellName: '' },
   });
   const [sharedSlots, setSharedSlots] = useState<Set<Slot>>(new Set());
-  const [filterSpecs, setFilterSpecs] = useState(false);
+  
 
   const { gear, presetId, prayerKey, styleIndex, potionId, spellName } = tabs[activeTab];
 
@@ -74,8 +74,7 @@ export default function App() {
   const [startEnergy, setStartEnergy] = useState(100);
   const [trials, setTrials] = useState(20000);
   const [kills, setKills] = useState(1);
-  const [downtimeSeconds, setDowntimeSeconds] = useState(0);
-  const [bankingSeconds, setBankingSeconds] = useState(0);
+  const [bankingSeconds, setBankingSeconds] = useState(30);
   const [compareLightbearer, setCompareLightbearer] = useState(true);
 
   const [rows, setRows] = useState<SpecResult[] | null>(null);
@@ -163,17 +162,6 @@ export default function App() {
     return map;
   }, [editingSpec, equipment, itemsBySlot, pickerItems]);
 
-  const monster = useMemo(
-    () => monsters.find((m) => monsterLabel(m) === monsterQuery) ?? null,
-    [monsters, monsterQuery],
-  );
-
-  const monsterOptions = useMemo(() => {
-    const q = monsterQuery.trim().toLowerCase();
-    const pool = q ? monsters.filter((m) => monsterLabel(m).toLowerCase().includes(q)) : monsters;
-    return pool.slice(0, 60);
-  }, [monsters, monsterQuery]);
-
   /** Styles the equipped weapon actually offers. */
   const styles = useMemo(() => stylesFor(gear), [gear]);
   const style = useMemo(() => selectedStyle(gear, styleIndex), [gear, styleIndex]);
@@ -193,12 +181,22 @@ export default function App() {
     [gear, levels, potionId, prayerKey, styleIndex, spell, buffs],
   );
 
-  const main = useMemo(() => buildMain(setup, monster), [setup, monster]);
-  const mods = useMemo(() => activeModifiers(setup, monster), [setup, monster]);
+  const firstEncounterMonster = useMemo(
+    () => {
+      const e = encounters[0];
+      return e ? (monsters.find(m => monsterLabel(m) === e.monsterId) ?? monsters[0]) : null;
+    },
+    [monsters, encounters]
+  );
+  
+  const monster = firstEncounterMonster;
+
+  const main = useMemo(() => buildMain(setup, firstEncounterMonster), [setup, firstEncounterMonster]);
+  const mods = useMemo(() => activeModifiers(setup, firstEncounterMonster), [setup, firstEncounterMonster]);
 
   const mainDps = useMemo(
-    () => (monster ? dps(main, monster, stateOf(monster)) : 0),
-    [main, monster],
+    () => (firstEncounterMonster ? dps(main, firstEncounterMonster, stateOf(firstEncounterMonster)) : 0),
+    [main, firstEncounterMonster],
   );
 
   /** Spec switches as resolved items, ready for the loadout builder. */
@@ -260,7 +258,7 @@ export default function App() {
       return;
     }
 
-    setMonsterQuery(prev.monsterQuery ?? DEFAULT_MONSTER);
+    setEncounters(prev.encounters ?? [{ id: crypto.randomUUID(), monsterId: prev.monsterQuery ?? DEFAULT_MONSTER, styleTab: 'melee', count: 1, downtimeSeconds: 0 }]);
     
     if (prev.tabs && prev.activeTab) {
       setTabs({
@@ -283,7 +281,6 @@ export default function App() {
     if (typeof prev.startEnergy === 'number') setStartEnergy(prev.startEnergy);
     if (typeof prev.trials === 'number') setTrials(prev.trials);
     if (typeof prev.kills === 'number') setKills(prev.kills);
-    if (typeof prev.downtimeSeconds === 'number') setDowntimeSeconds(prev.downtimeSeconds);
     if (typeof prev.bankingSeconds === 'number') setBankingSeconds(prev.bankingSeconds);
     if (typeof prev.compareLightbearer === 'boolean') setCompareLightbearer(prev.compareLightbearer);
     setSetupName(prev.setupName ?? '');
@@ -301,20 +298,20 @@ export default function App() {
     };
 
     const state: SessionState = {
-      monsterQuery,
+      encounters,
       tabs: tabsRaw,
       activeTab,
       lockedSlots: [...sharedSlots],
       levels, buffs, switches,
       enabledSpecs: [...enabled],
-      startEnergy, trials, kills, downtimeSeconds, bankingSeconds,
+      startEnergy, trials, kills, bankingSeconds,
       compareLightbearer, setupName,
     };
     saveSession(state);
   }, [
-    equipment.length, monsterQuery, tabs, activeTab, sharedSlots, levels,
+    equipment.length, encounters, tabs, activeTab, sharedSlots, levels,
     buffs, switches, enabled, startEnergy, trials, kills,
-    downtimeSeconds, bankingSeconds, compareLightbearer, setupName,
+    bankingSeconds, compareLightbearer, setupName,
   ]);
 
   const effectiveTrials = useMemo(
@@ -330,50 +327,112 @@ export default function App() {
 
   const run = useCallback(() => {
     const w = workerRef.current;
-    if (!w || !monster) return;
+    if (!w || !encounters.length) return;
+
+    // Convert EncounterDef to SimEncounter
+    const simEncounters: SimEncounter[] = encounters.map(e => {
+      const m = monsters.find(m => monsterLabel(m) === e.monsterId) ?? monsters[0];
+      const t = tabs[e.styleTab];
+      const setupForTab: SetupInput = {
+        gear: t.gear,
+        levels,
+        potionId: t.potionId,
+        prayerKey: t.prayerKey,
+        styleIndex: t.styleIndex,
+        spell: spells.find(s => s.name === t.spellName) ?? null,
+        buffs
+      };
+      
+      const main = buildMain(setupForTab, m);
+      
+      // Calculate spec loadouts per enabled spec
+      const specsList = buildSpecCandidates(setupForTab, equipment, enabled, m, resolvedSwitches);
+      const specLoads: Record<string, typeof main> = {};
+      for (const sp of specsList) {
+        specLoads[sp.id] = sp.load;
+      }
+      
+      return {
+        monster: m,
+        main,
+        specLoads,
+        count: e.count,
+        downtimeTicks: Math.round(e.downtimeSeconds / 0.6)
+      };
+    });
 
     const baseOpts = {
       startEnergy, trials: effectiveTrials, seed: 12345,
       kills,
-      downtimeTicks: Math.round(downtimeSeconds / 0.6),
+      downtimeTicks: 0, // downtime is now handled per-encounter
       bankingTicks: Math.round(bankingSeconds / 0.6),
       specOptions,
     };
 
-    const makeVariant = (key: string, s: SetupInput, lightbearer: boolean): SimVariant => ({
-      key,
-      main: buildMain(s, monster),
-      specs: buildSpecCandidates(s, equipment, enabled, monster, resolvedSwitches)
-        .map(({ id, load }) => ({ id, load })),
-      opts: { ...baseOpts, lightbearer },
-    });
+    const makeVariant = (key: string, lightbearer: boolean): SimVariant => {
+      // If we are testing lightbearer, we replace the ring slot in the gear for EVERY tab.
+      let finalEncounters = simEncounters;
+      if (lightbearer && lightbearerItem) {
+        finalEncounters = encounters.map(e => {
+          const m = monsters.find(m => monsterLabel(m) === e.monsterId) ?? monsters[0];
+          const t = tabs[e.styleTab];
+          const setupForTab: SetupInput = {
+            gear: { ...t.gear, ring: lightbearerItem },
+            levels,
+            potionId: t.potionId,
+            prayerKey: t.prayerKey,
+            styleIndex: t.styleIndex,
+            spell: spells.find(s => s.name === t.spellName) ?? null,
+            buffs
+          };
+          
+          const main = buildMain(setupForTab, m);
+          const specsList = buildSpecCandidates(setupForTab, equipment, enabled, m, resolvedSwitches);
+          const specLoads: Record<string, typeof main> = {};
+          for (const sp of specsList) {
+            specLoads[sp.id] = sp.load;
+          }
+          
+          return {
+            monster: m,
+            main,
+            specLoads,
+            count: e.count,
+            downtimeTicks: Math.round(e.downtimeSeconds / 0.6)
+          };
+        });
+      }
 
-    const variants: SimVariant[] = [makeVariant('normal', setup, false)];
+      return {
+        key,
+        encounters: finalEncounters,
+        specIds: [...enabled],
+        opts: { ...baseOpts, lightbearer },
+      };
+    };
+
+    const variants: SimVariant[] = [makeVariant('normal', false)];
     if (compareLightbearer && lightbearerItem) {
-      variants.push(makeVariant(
-        'lightbearer',
-        { ...setup, gear: { ...gear, ring: lightbearerItem } },
-        true,
-      ));
+      variants.push(makeVariant('lightbearer', true));
     }
 
     setRunning(true);
     reqId.current += 1;
-    const req: SimRequest = { id: reqId.current, monster, variants };
+    const req: SimRequest = { id: reqId.current, variants };
     w.postMessage(req);
   }, [
-    monster, setup, gear, equipment, enabled, resolvedSwitches,
-    startEnergy, effectiveTrials, kills, downtimeSeconds, bankingSeconds,
+    monsters, encounters, tabs, levels, spells, buffs, equipment, enabled, resolvedSwitches,
+    startEnergy, effectiveTrials, kills, bankingSeconds,
     compareLightbearer, lightbearerItem, specOptions,
   ]);
 
   const ranOnce = useRef(false);
   useEffect(() => {
-    if (!ranOnce.current && monster && gear.weapon && equipment.length) {
+    if (!ranOnce.current && encounters.length > 0 && equipment.length) {
       ranOnce.current = true;
       run();
     }
-  }, [monster, gear.weapon, equipment, run]);
+  }, [encounters, equipment, run]);
 
   /**
    * Re-run whenever the inputs change. `run` is rebuilt by useCallback on every
@@ -459,21 +518,21 @@ export default function App() {
   const previewSwitch = useCallback(
     (def: SpecDef) => (ov: Partial<Record<Slot, ItemRef | null>>): SwitchPreview => {
       const weapon = specWeaponItem(def, equipment);
-      if (!weapon || !monster) return { maxHit: 0, attackRoll: 0, hitChance: 0 };
+      if (!weapon || !firstEncounterMonster) return { maxHit: 0, attackRoll: 0, hitChance: 0 };
       const resolved: Partial<Record<Slot, Equip | null>> = {};
       for (const slot of SLOTS) {
         if (slot in ov) resolved[slot] = resolveRef(ov[slot], equipment);
       }
-      const load = buildSpecLoadout(setup, def, weapon, monster, resolved);
+      const load = buildSpecLoadout(setup, def, weapon, firstEncounterMonster, resolved);
       const hitChance = def.guaranteed
         ? 1
-        : accuracy(load, monster, stateOf(monster), {
+        : accuracy(load, firstEncounterMonster, stateOf(firstEncounterMonster), {
           styleOverride: def.defStyle,
           accuracyMultiplier: def.accMult,
         });
       return { maxHit: def.maxHit(load.maxHit), attackRoll: load.attackRoll, hitChance };
     },
-    [equipment, monster, setup],
+    [equipment, firstEncounterMonster, setup],
   );
 
   const doSave = () => {
@@ -489,6 +548,7 @@ export default function App() {
     setSaved(saveSetup({
       name,
       savedAt: new Date().toISOString(),
+      encounters,
       tabs: tabsRaw,
       activeTab,
       lockedSlots: [...sharedSlots],
@@ -500,6 +560,10 @@ export default function App() {
   const doLoad = (name: string) => {
     const s = saved.find((x) => x.name === name);
     if (!s) return;
+    
+    if (s.encounters) {
+      setEncounters(s.encounters);
+    }
     
     if (s.tabs && s.activeTab) {
       setTabs({
@@ -523,9 +587,9 @@ export default function App() {
   };
 
   const currentShareable = () => ({
-    monsterQuery, tabs, activeTab, lockedSlots: [...sharedSlots],
+    encounters, tabs, activeTab, lockedSlots: [...sharedSlots],
     levels, buffs, switches, enabledSpecs: [...enabled], specOptions,
-    startEnergy, kills, downtimeSeconds, bankingSeconds, compareLightbearer,
+    startEnergy, kills, bankingSeconds, compareLightbearer,
   });
 
   const doCopyCode = async () => {
@@ -535,7 +599,6 @@ export default function App() {
       await navigator.clipboard.writeText(code);
       setToast('Code copied to clipboard');
     } catch {
-      // Clipboard access can be blocked; the code is in the box either way.
       setToast('Code ready below - copy it manually');
     }
   };
@@ -543,6 +606,12 @@ export default function App() {
   const doLoadCode = (codeStr = shareCode) => {
     const decoded = decodeSetup(codeStr, equipment);
     if (!decoded) { setToast('That is not a valid SpecScape code'); return; }
+    
+    if (decoded.encounters) {
+      setEncounters(decoded.encounters);
+    } else if (decoded.monsterQuery) {
+      setEncounters([{ id: crypto.randomUUID(), monsterId: decoded.monsterQuery, styleTab: decoded.activeTab ?? 'melee', count: 1, downtimeSeconds: decoded.downtimeSeconds ?? 0 }]);
+    }
     
     if (decoded.tabs && decoded.activeTab) {
       setTabs({
@@ -558,7 +627,6 @@ export default function App() {
       setTabs({ melee: tab, ranged: tab, magic: tab });
     }
 
-    setMonsterQuery(decoded.monsterQuery);
     setLevels(decoded.levels);
     setBuffs(decoded.buffs);
     setSwitches(decoded.switches);
@@ -566,13 +634,11 @@ export default function App() {
     if (Object.keys(decoded.specOptions).length) setSpecOptions(decoded.specOptions);
     setStartEnergy(decoded.startEnergy);
     setKills(decoded.kills);
-    setDowntimeSeconds(decoded.downtimeSeconds);
     setBankingSeconds(decoded.bankingSeconds);
     setCompareLightbearer(decoded.compareLightbearer);
     setToast('Setup loaded from code');
   };
 
-  // ---- render -------------------------------------------------------------
   const maxSaved = useMemo(
     () => Math.max(1, ...(rows ?? []).map((r) => Math.abs(r.secondsSaved))),
     [rows],
@@ -636,38 +702,87 @@ export default function App() {
 
       <div className="top-panels">
         <section className="panel">
-          <h2>Target</h2>
-          <label>
-            <span>Monster</span>
-            <input
-              list="monster-list"
-              value={monsterQuery}
-              onChange={(e) => setMonsterQuery(e.target.value)}
-              placeholder="Search a monster..."
-            />
-          </label>
+          <h2>Sequence</h2>
+          <div className="encounter-list" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {encounters.map((enc, i) => (
+              <div key={enc.id} className="encounter-row" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input
+                  list="monster-list"
+                  value={enc.monsterId}
+                  onChange={(e) => {
+                    const newE = [...encounters];
+                    newE[i].monsterId = e.target.value;
+                    setEncounters(newE);
+                  }}
+                  placeholder="Monster..."
+                  style={{ flex: 2 }}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  value={enc.count}
+                  onChange={(e) => {
+                    const newE = [...encounters];
+                    newE[i].count = Number(e.target.value) || 1;
+                    setEncounters(newE);
+                  }}
+                  title="Kill count"
+                  style={{ width: "60px" }}
+                />
+                <select
+                  value={enc.styleTab}
+                  onChange={(e) => {
+                    const newE = [...encounters];
+                    newE[i].styleTab = e.target.value as any;
+                    setEncounters(newE);
+                  }}
+                  style={{ flex: 1 }}
+                >
+                  <option value="melee">Melee</option>
+                  <option value="ranged">Ranged</option>
+                  <option value="magic">Magic</option>
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  value={enc.downtimeSeconds}
+                  onChange={(e) => {
+                    const newE = [...encounters];
+                    newE[i].downtimeSeconds = Number(e.target.value) || 0;
+                    setEncounters(newE);
+                  }}
+                  title="Downtime before (s)"
+                  style={{ width: "60px" }}
+                />
+                <button
+                  className="mini"
+                  onClick={() => {
+                    const newE = encounters.filter((_, idx) => idx !== i);
+                    setEncounters(newE.length ? newE : [{ id: crypto.randomUUID(), monsterId: DEFAULT_MONSTER, styleTab: 'melee', count: 1, downtimeSeconds: 0 }]);
+                  }}
+                >
+                  X
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            className="mini"
+            style={{ marginTop: "8px" }}
+            onClick={() => setEncounters([...encounters, { id: crypto.randomUUID(), monsterId: DEFAULT_MONSTER, styleTab: 'melee', count: 1, downtimeSeconds: 0 }])}
+          >
+            + Add encounter
+          </button>
           <datalist id="monster-list">
-            {monsterOptions.map((m, i) => (
+            {monsters.map((m, i) => (
               <option key={`${m.id}-${m.version}-${i}`} value={monsterLabel(m)} />
             ))}
           </datalist>
-
-          {monster && (
-            <div className="target-facts">
-              <span className="fact"><b>{monster.hp}</b> HP</span>
-              <span className="fact"><b>{monster.def}</b> def</span>
-              <span className="fact">stab <b>{monster.d.stab}</b></span>
-              <span className="fact">slash <b>{monster.d.slash}</b></span>
-              <span className="fact">crush <b>{monster.d.crush}</b></span>
-              <span className="fact">magic <b>{monster.d.magic}</b></span>
-            </div>
-          )}
-          {drainNote && <div className="warn">{drainNote}</div>}
-          {!monster && <div className="warn">Pick a monster from the list to run a comparison.</div>}
+          {firstEncounterMonster && limit && drainNote && <div className="warn" style={{ marginTop: "8px" }}>{drainNote}</div>}
         </section>
 
         <section className="panel">
-          <h2>Encounter</h2>
+          <h2>Trip Settings</h2>
           <div className="row">
             <label>
               <span>Starting spec energy</span>
@@ -677,7 +792,7 @@ export default function App() {
               />
             </label>
             <label>
-              <span>Trials {kills > 1 && effectiveTrials !== trials ? `(${effectiveTrials.toLocaleString()} trips x ${kills} kills)` : ''}</span>
+              <span>Trials {kills > 1 && effectiveTrials !== trials ? `(${effectiveTrials.toLocaleString()} trips x ${kills} sequences)` : ''}</span>
               <select value={trials} onChange={(e) => setTrials(Number(e.target.value))}>
                 <option value={5000}>5,000 (fast)</option>
                 <option value={20000}>20,000</option>
@@ -685,19 +800,12 @@ export default function App() {
               </select>
             </label>
           </div>
-          <div className="row-3">
+          <div className="row">
             <label>
-              <span>Kills per trip</span>
+              <span>Sequences per trip</span>
               <input
                 type="number" min={1} max={200} value={kills}
                 onChange={(e) => setKills(Math.max(1, Number(e.target.value) || 1))}
-              />
-            </label>
-            <label>
-              <span>Downtime between kills (s)</span>
-              <input
-                type="number" min={0} max={600} value={downtimeSeconds}
-                onChange={(e) => setDowntimeSeconds(Math.max(0, Number(e.target.value) || 0))}
               />
             </label>
             <label>
@@ -715,7 +823,7 @@ export default function App() {
             />
             Compare Lightbearer (swaps your ring, doubles spec regen)
           </label>
-          <button className="primary" style={{ marginTop: "16px", width: "100%" }} onClick={run} disabled={running || !monster}>{running ? "Simulating..." : "Compare specs"}</button>
+          <button className="primary" style={{ marginTop: "16px", width: "100%" }} onClick={run} disabled={running || !encounters.length}>{running ? "Simulating..." : "Compare specs"}</button>
         </section>
       </div>
 
@@ -835,15 +943,8 @@ export default function App() {
 
           <section className="panel">
             <h2>Specs to compare</h2>
-            <label className="check" style={{ marginBottom: '10px' }}>
-              <input
-                type="checkbox" checked={filterSpecs}
-                onChange={(e) => setFilterSpecs(e.target.checked)}
-              />
-              Only show specs matching the current style
-            </label>
             <div className="checks">
-              {SPECS.filter(s => !filterSpecs || s.type === style.attackType).map((s) => (
+              {SPECS.map((s) => (
                 <label key={s.id} className="check">
                   <input
                     type="checkbox" checked={enabled.has(s.id)}
@@ -869,8 +970,8 @@ export default function App() {
 
         <section className="panel">
           <h2>
-            Results {monster ? `- ${monsterLabel(monster)}` : ''}
-            {kills > 1 ? ` - trip of ${kills} kills` : ''}
+            Results
+            {kills > 1 ? ` - trip of ${kills} sequences` : ''}
           </h2>
           {showLb && (
             <p className="hint">
@@ -884,13 +985,13 @@ export default function App() {
               <thead>
                 <tr>
                   <th>Spec</th>
-                  <th title="Mean time to kill the target">Kill</th>
-                  <th title="Seconds saved per kill versus not speccing at all">Saved</th>
+                  <th title="Mean time to complete the sequence">Sequence</th>
+                  <th title="Seconds saved per sequence versus not speccing at all">Saved</th>
                   {kills > 1 && (
                     <th title="Total time saved across the whole trip, including downtime">Trip</th>
                   )}
                   <th className="bar-cell" />
-                  {showLb && <th title="Kill time wearing Lightbearer instead of your ring">LB kill</th>}
+                  {showLb && <th title="Sequence time wearing Lightbearer instead of your ring">LB sequence</th>}
                   {showLb && <th title="Seconds the specs save within the Lightbearer setup">LB saved</th>}
                   <th title="Mean number of spec attacks over the whole trip">Casts</th>
                   <th title="Customise the gear this spec switches to" />
@@ -976,7 +1077,7 @@ export default function App() {
           itemsBySlot={switchPickerItems}
           equipment={equipment}
           preview={previewSwitch(editingSpec)}
-          targetAttributes={monster?.attributes ?? []}
+          targetAttributes={firstEncounterMonster?.attributes ?? []}
           onChange={(ov) => setSwitches((s) => ({ ...s, [editingSpec.id]: ov }))}
           onClose={() => setEditingSpec(null)}
         />

@@ -29,7 +29,8 @@ export interface TabState {
 export type TabKind = 'melee' | 'ranged' | 'magic';
 
 export interface ShareableSetup {
-  monsterQuery: string;
+  encounters?: import('./session').EncounterDef[];
+  monsterQuery?: string;
   
   tabs?: Record<TabKind, TabState>;
   activeTab?: TabKind;
@@ -47,7 +48,7 @@ export interface ShareableSetup {
   specOptions: Record<string, boolean>;
   startEnergy: number;
   kills: number;
-  downtimeSeconds: number;
+  downtimeSeconds?: number;
   bankingSeconds: number;
   compareLightbearer: boolean;
 }
@@ -101,13 +102,17 @@ export const encodeSetup = (setup: ShareableSetup, equipment: Equip[]): string =
     .join(',');
 
   const encounter = [
-    setup.startEnergy, setup.kills, setup.downtimeSeconds, setup.bankingSeconds,
+    setup.startEnergy, setup.kills, setup.downtimeSeconds ?? 0, setup.bankingSeconds,
     setup.compareLightbearer ? 1 : 0,
   ].join(',');
 
+  const encountersRaw = setup.encounters
+    ? setup.encounters.map(e => `${e.monsterId}#${e.styleTab}#${e.count}#${e.downtimeSeconds}`).join('~')
+    : '';
+
   return toBase64Url([
     VERSION,
-    setup.monsterQuery,
+    setup.monsterQuery ?? '',
     gearRaw,
     levels,
     prayerKey ?? 'none',
@@ -119,6 +124,7 @@ export const encodeSetup = (setup: ShareableSetup, equipment: Equip[]): string =
     optionOverrides,
     switches,
     encounter,
+    encountersRaw
   ].join(SEP));
 };
 
@@ -130,7 +136,7 @@ export const decodeSetup = (code: string, equipment: Equip[]): DecodedSetup | nu
 
     const [
       , monsterQuery, gearRaw, levelsRaw, prayerKey, styleRaw,
-      potionId, spellName, offTaskRaw, disabledRaw, optionsRaw, switchesRaw, encounterRaw,
+      potionId, spellName, offTaskRaw, disabledRaw, optionsRaw, switchesRaw, encounterRaw, encountersRaw
     ] = parts;
 
     const byId = new Map(equipment.map((e) => [e.id, e]));
@@ -174,9 +180,24 @@ export const decodeSetup = (code: string, equipment: Equip[]): DecodedSetup | nu
         switches[specId][slot as Slot] = item ? { name: item.name, version: item.version } : null;
       }
     }
+    
+    let encounters: import('./session').EncounterDef[] | undefined;
+    if (encountersRaw) {
+      encounters = encountersRaw.split('~').map(e => {
+        const [mId, style, cnt, dt] = e.split('#');
+        return {
+          id: crypto.randomUUID(),
+          monsterId: mId,
+          styleTab: style as TabKind,
+          count: Number(cnt) || 1,
+          downtimeSeconds: Number(dt) || 0
+        };
+      });
+    }
 
     return {
       monsterQuery,
+      encounters,
       gear,
       levels: {
         attack: attack || 99, strength: strength || 99,

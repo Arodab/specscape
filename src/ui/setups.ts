@@ -36,6 +36,8 @@ export interface SavedSetup {
   name: string;
   savedAt: string;
   
+  encounters?: import('./session').EncounterDef[];
+  
   tabs?: Record<TabKind, TabStateRaw>;
   activeTab?: TabKind;
   lockedSlots?: Slot[];

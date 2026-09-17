@@ -28,8 +28,16 @@ export interface TabStateRaw {
 
 export type TabKind = 'melee' | 'ranged' | 'magic';
 
+export interface EncounterDef {
+  id: string;
+  monsterId: string;
+  styleTab: TabKind;
+  count: number;
+  downtimeSeconds: number;
+}
+
 export interface SessionState {
-  monsterQuery: string;
+  encounters: EncounterDef[];
   
   tabs?: Record<TabKind, TabStateRaw>;
   activeTab?: TabKind;
@@ -49,10 +57,13 @@ export interface SessionState {
   startEnergy: number;
   trials: number;
   kills: number;
-  downtimeSeconds: number;
   bankingSeconds: number;
   compareLightbearer: boolean;
   setupName: string;
+
+  // Legacy fields for migration
+  monsterQuery?: string;
+  downtimeSeconds?: number;
 }
 
 /**
@@ -64,7 +75,21 @@ export const loadSession = (): Partial<SessionState> | null => {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? (parsed as Partial<SessionState>) : null;
+    const state = parsed && typeof parsed === 'object' ? (parsed as Partial<SessionState>) : null;
+    if (state) {
+      if (state.monsterQuery && !state.encounters) {
+        state.encounters = [{
+          id: crypto.randomUUID(),
+          monsterId: state.monsterQuery,
+          styleTab: state.activeTab ?? 'melee',
+          count: 1,
+          downtimeSeconds: state.downtimeSeconds ?? 0
+        }];
+        delete state.monsterQuery;
+        delete state.downtimeSeconds;
+      }
+    }
+    return state;
   } catch {
     return null;
   }

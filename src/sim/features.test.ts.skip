@@ -216,7 +216,7 @@ describe('spec policy', () => {
     });
 
     const r = runSim({
-      monster: tank, main: maxMelee(), spec: { def: dwh, load },
+      encounters: [], specId: 'test', main: maxMelee(), spec: { def: dwh, load },
       opts: { startEnergy: 100, lightbearer: true, trials: 400, seed: 5, kills: 1, downtimeTicks: 0, bankingTicks: 0, specOptions: {} },
     });
     // 100% energy buys exactly two 50% casts, and nothing after that.
@@ -240,7 +240,7 @@ describe('trip mode', () => {
   it('carries spec energy across kills instead of resetting it', () => {
     const def = specById('voidwaker')!;
     const r = runSim({
-      monster: target, main, spec: { def, load: loadFor('voidwaker') },
+      encounters: [], specId: 'test', main, spec: { def, load: loadFor('voidwaker') },
       opts: {
         startEnergy: 100, lightbearer: false, trials: 300, seed: 11,
         kills: 10, downtimeTicks: 0, bankingTicks: 0, specOptions: {},
@@ -259,12 +259,12 @@ describe('trip mode', () => {
       kills: 10, downtimeTicks: 100, bankingTicks: 0, specOptions: {},
     };
     const cheap = runSim({
-      monster: target, main,
+      encounters: [], specId: 'test', main,
       spec: { def: specById('dragon_dagger')!, load: loadFor('dragon_dagger') },
       opts,
     });
     const pricey = runSim({
-      monster: target, main,
+      encounters: [], specId: 'test', main,
       spec: { def: specById('zcb')!, load: loadFor('zcb') },
       opts,
     });
@@ -274,10 +274,10 @@ describe('trip mode', () => {
   it('counts downtime in the trip total but not in per-kill time', () => {
     const base = { startEnergy: 100, lightbearer: false, trials: 200, seed: 7, kills: 5 };
     const noIdle = runSim({
-      monster: target, main, spec: null, opts: { ...base, downtimeTicks: 0, bankingTicks: 0, specOptions: {} },
+      encounters: [], specId: 'test', main,  opts: { ...base, downtimeTicks: 0, bankingTicks: 0, specOptions: {} },
     });
     const idle = runSim({
-      monster: target, main, spec: null, opts: { ...base, downtimeTicks: 100, bankingTicks: 0, specOptions: {} },
+      encounters: [], specId: 'test', main,  opts: { ...base, downtimeTicks: 100, bankingTicks: 0, specOptions: {} },
     });
     expect(idle.meanSeconds).toBeCloseTo(noIdle.meanSeconds, 1);
     // 4 gaps of 100 ticks = 400 ticks = 240 seconds.
@@ -295,10 +295,10 @@ describe('banking time', () => {
 
   it('adds to the trip total but never to kill time', () => {
     const none = runSim({
-      monster: target, main, spec: null, opts: { ...base, bankingTicks: 0, specOptions: {} },
+      encounters: [], specId: 'test', main,  opts: { ...base, bankingTicks: 0, specOptions: {} },
     });
     const banked = runSim({
-      monster: target, main, spec: null, opts: { ...base, bankingTicks: 200, specOptions: {} },
+      encounters: [], specId: 'test', main,  opts: { ...base, bankingTicks: 200, specOptions: {} },
     });
 
     expect(banked.meanSeconds).toBeCloseTo(none.meanSeconds, 5);
@@ -316,10 +316,10 @@ describe('banking time', () => {
       equip: { attack: 80, strength: 90 }, speed: def.speed, defStyle: def.defStyle,
     });
     const short = runSim({
-      monster: target, main, spec: { def, load }, opts: { ...base, bankingTicks: 0, specOptions: {} },
+      encounters: [], specId: 'test', main, spec: { def, load }, opts: { ...base, bankingTicks: 0, specOptions: {} },
     });
     const long = runSim({
-      monster: target, main, spec: { def, load }, opts: { ...base, bankingTicks: 2000, specOptions: {} },
+      encounters: [], specId: 'test', main, spec: { def, load }, opts: { ...base, bankingTicks: 2000, specOptions: {} },
     });
     expect(long.meanSpecCasts).toBeCloseTo(short.meanSpecCasts, 5);
   });

@@ -150,7 +150,7 @@ describe('integration: specs vs Vorkath', () => {
 
   it('baseline kill time is plausible', () => {
     const vorkath = findMonster('Vorkath');
-    const r = runSim({ monster: vorkath, main: maxMelee(), spec: null, opts });
+    const r = runSim({ encounters: [], specId: 'test', main: maxMelee(),  opts });
     // 750 HP boss - a real max melee kill is on the order of a minute.
     expect(r.meanSeconds).toBeGreaterThan(20);
     expect(r.meanSeconds).toBeLessThan(200);
