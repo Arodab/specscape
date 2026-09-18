@@ -55,11 +55,14 @@ interface EnergyState {
 
 /** Returns a function to advance time, regenerating energy. */
 const makeAdvance = (opts: SimOptions, state: EnergyState, tickCb: () => void) => (ticks: number) => {
+  const teamSize = opts.teamSize ?? 1;
+  const maxEnergy = 100 * teamSize;
+  const regenAmount = 10 * teamSize;
   for (let i = 0; i < ticks; i++) {
     tickCb();
-    if (state.energy < 100) {
+    if (state.energy < maxEnergy) {
       if (--state.regenCounter <= 0) {
-        state.energy = Math.min(100, state.energy + 10);
+        state.energy = Math.min(maxEnergy, state.energy + regenAmount);
         state.regenCounter = opts.lightbearer ? REGEN_TICKS / 2 : REGEN_TICKS;
       }
     }
@@ -86,91 +89,106 @@ const simulateKill = (
   isLastKill: boolean,
 ): KillOutcome => {
   const { monster, main } = encounter;
-
   const state = freshState(monster);
   const isDemon = monster.attributes.includes('demon');
+  const teamSize = opts.teamSize ?? 1;
 
   let ticks = 0;
   let energySpent = 0;
   let casts = 0;
   let primaryCasts = 0;
-  /**
-   * Defence drains are only worth using before you start hitting the target,
-   * so once the main weapon swings, 'opening' specs are locked out for this kill.
-   */
   let openingOver = false;
   let specHits = 0;
 
-  const advance = makeAdvance(opts, energy, () => { ticks++; });
+  const playerCooldowns = new Array(teamSize).fill(0);
+  const advance = makeAdvance(opts, energy, () => {
+    ticks++;
+    for (let p = 0; p < teamSize; p++) {
+      if (playerCooldowns[p] > 0) playerCooldowns[p]--;
+    }
+  });
 
   while (state.hp > 0 && ticks < MAX_TICKS) {
-    let activeSpec = spec;
-    let isActiveFollowUp = false;
+    let someoneAttacked = false;
 
-    if (spec) {
-      const primaryCanSpec = energy.energy >= spec.def.cost
-        && (specPolicy(spec.def) === 'greedy' || !openingOver)
-        && (spec.def.maxCasts === undefined || primaryCasts < spec.def.maxCasts)
-        && (spec.def.stopOnHit !== true || specHits === 0)
-        && (isLastKill || state.hp > main.maxHit);
+    for (let p = 0; p < teamSize; p++) {
+      if (state.hp <= 0) break;
+      if (playerCooldowns[p] > 0) continue;
 
-      if (!primaryCanSpec) {
+      let activeSpec = spec;
+      let isActiveFollowUp = false;
+
+      if (spec) {
+        const primaryCanSpec = energy.energy >= spec.def.cost
+          && (specPolicy(spec.def) === 'greedy' || !openingOver)
+          && (spec.def.maxCasts === undefined || primaryCasts < spec.def.maxCasts)
+          && (spec.def.stopOnHit !== true || specHits === 0)
+          && (isLastKill || state.hp > main.maxHit);
+
+        if (!primaryCanSpec) {
+          activeSpec = followUp;
+          isActiveFollowUp = true;
+        }
+      } else if (followUp) {
         activeSpec = followUp;
         isActiveFollowUp = true;
       }
-    } else if (followUp) {
-      activeSpec = followUp;
-      isActiveFollowUp = true;
-    }
 
-    const canSpec = activeSpec
-      && energy.energy >= activeSpec.def.cost
-      && (specPolicy(activeSpec.def) === 'greedy' || !openingOver)
-      && (isLastKill || state.hp > main.maxHit);
+      const canSpec = activeSpec
+        && energy.energy >= activeSpec.def.cost
+        && (specPolicy(activeSpec.def) === 'greedy' || !openingOver)
+        && (isLastKill || state.hp > main.maxHit);
 
-    if (activeSpec && canSpec) {
-      const acc = activeSpec.def.guaranteed
-        ? 1
-        : accuracy(activeSpec.load, monster, state, {
-            styleOverride: activeSpec.def.defStyle,
-            accuracyMultiplier: activeSpec.def.accMult,
-          });
+      if (activeSpec && canSpec) {
+        const acc = activeSpec.def.guaranteed
+          ? 1
+          : accuracy(activeSpec.load, monster, state, {
+              styleOverride: activeSpec.def.defStyle,
+              accuracyMultiplier: activeSpec.def.accMult,
+            });
 
-      const ctx: SpecCtx = {
-        load: activeSpec.load,
-        acc,
-        rng,
-        state,
-        monsterName: monster.name,
-        isDemon,
-        options: opts.specOptions,
-      };
+        const ctx: SpecCtx = {
+          load: activeSpec.load,
+          acc,
+          rng,
+          state,
+          monsterName: monster.name,
+          isDemon,
+          options: opts.specOptions,
+        };
 
-      const specMax = activeSpec.def.maxHit(activeSpec.load.maxHit);
-      const hits = activeSpec.def.hits(ctx, specMax);
-      applyHits(state, hits);
+        const specMax = activeSpec.def.maxHit(activeSpec.load.maxHit);
+        const hits = activeSpec.def.hits(ctx, specMax);
+        applyHits(state, hits);
 
-      if (!isActiveFollowUp && hits.some(h => h > 0)) {
-        specHits++;
+        if (!isActiveFollowUp && hits.some(h => h > 0)) {
+          specHits++;
+        }
+
+        energy.energy -= activeSpec.def.cost;
+        energySpent += activeSpec.def.cost;
+        casts++;
+        if (!isActiveFollowUp) {
+          primaryCasts++;
+        }
+        playerCooldowns[p] = activeSpec.def.speed;
+        someoneAttacked = true;
+        continue;
       }
 
-      energy.energy -= activeSpec.def.cost;
-      energySpent += activeSpec.def.cost;
-      casts++;
-      if (!isActiveFollowUp) {
-        primaryCasts++;
+      // Main weapon attack.
+      openingOver = true;
+      const acc = accuracy(main, monster, state);
+      if (rng() < acc) {
+        applyHits(state, [randInt(rng, 0, main.maxHit)]);
       }
-      advance(activeSpec.def.speed);
-      continue;
+      playerCooldowns[p] = main.speed;
+      someoneAttacked = true;
     }
 
-    // Main weapon attack.
-    openingOver = true;
-    const acc = accuracy(main, monster, state);
-    if (rng() < acc) {
-      applyHits(state, [randInt(rng, 0, main.maxHit)]);
+    if (!someoneAttacked) {
+      advance(1);
     }
-    advance(main.speed);
   }
 
   return { ticks, energySpent, casts };
@@ -190,7 +208,7 @@ interface TripOutcome {
   encCasts: number[];
 }
 
-const simulateTrip = (
+  const simulateTrip = (
   input: SimInput,
   precomputedSpecs: ({ def: SpecDef, load: Loadout } | null)[],
   precomputedFollowUp: ({ def: SpecDef, load: Loadout } | null)[],
@@ -198,8 +216,9 @@ const simulateTrip = (
 ): TripOutcome => {
   const { opts, encounters } = input;
   const loops = Math.max(1, opts.kills); // opts.kills now represents loops per trip
+  const teamSize = opts.teamSize ?? 1;
   const energy: EnergyState = {
-    energy: opts.startEnergy,
+    energy: opts.startEnergy * teamSize,
     regenCounter: opts.lightbearer ? REGEN_TICKS / 2 : REGEN_TICKS,
   };
 
@@ -243,7 +262,7 @@ const simulateTrip = (
 
   if (opts.bankingTicks > 0) {
     totalTicks += opts.bankingTicks;
-    energy.energy = 100;
+    energy.energy = 100 * teamSize;
     energy.regenCounter = opts.lightbearer ? REGEN_TICKS / 2 : REGEN_TICKS;
   }
 

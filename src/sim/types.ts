@@ -75,6 +75,8 @@ export interface SimOptions {
    * with full special attack energy, so this is dead time rather than regen time.
    */
   bankingTicks: number;
+  /** Number of identical players attacking the boss simultaneously. */
+  teamSize?: number;
   /** Per-spec toggles, keyed by SpecDef.option.key. */
   specOptions: Record<string, boolean>;
 }

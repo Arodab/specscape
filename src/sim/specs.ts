@@ -371,6 +371,45 @@ export const SPECS: SpecDef[] = [
     },
   },
   {
+    id: 'dwh_2',
+    name: 'Dragon warhammer (2 casts)',
+    item: 'Dragon warhammer',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'crush', accMult: 1, drains: true, maxCasts: 2,
+    note: 'Drains 30% of current Defence on hit.',
+    maxHit: (base) => factor(base, 3, 2),
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      reduceDef(ctx, (cur) => cur - factor(cur, 3, 10));
+      return [uniformDamage(ctx, specMax)];
+    },
+  },
+  {
+    id: 'dwh_3',
+    name: 'Dragon warhammer (3 casts)',
+    item: 'Dragon warhammer',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'crush', accMult: 1, drains: true, maxCasts: 3,
+    note: 'Drains 30% of current Defence on hit.',
+    maxHit: (base) => factor(base, 3, 2),
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      reduceDef(ctx, (cur) => cur - factor(cur, 3, 10));
+      return [uniformDamage(ctx, specMax)];
+    },
+  },
+  {
+    id: 'dwh_4',
+    name: 'Dragon warhammer (4 casts)',
+    item: 'Dragon warhammer',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'crush', accMult: 1, drains: true, maxCasts: 4,
+    note: 'Drains 30% of current Defence on hit.',
+    maxHit: (base) => factor(base, 3, 2),
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      reduceDef(ctx, (cur) => cur - factor(cur, 3, 10));
+      return [uniformDamage(ctx, specMax)];
+    },
+  },
+  {
     id: 'dwh_hit',
     name: 'Dragon warhammer (until 1 lands)',
     item: 'Dragon warhammer',
@@ -397,6 +436,45 @@ export const SPECS: SpecDef[] = [
     },
   },
   {
+    id: 'elder_maul_2',
+    name: 'Elder maul (2 casts)',
+    item: 'Elder maul',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'crush', accMult: 1.25, drains: true, maxCasts: 2,
+    note: 'Drains 35% of current Defence on hit.',
+    maxHit: (base) => base,
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      reduceDef(ctx, (cur) => cur - factor(cur, 35, 100));
+      return [uniformDamage(ctx, specMax)];
+    },
+  },
+  {
+    id: 'elder_maul_3',
+    name: 'Elder maul (3 casts)',
+    item: 'Elder maul',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'crush', accMult: 1.25, drains: true, maxCasts: 3,
+    note: 'Drains 35% of current Defence on hit.',
+    maxHit: (base) => base,
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      reduceDef(ctx, (cur) => cur - factor(cur, 35, 100));
+      return [uniformDamage(ctx, specMax)];
+    },
+  },
+  {
+    id: 'elder_maul_4',
+    name: 'Elder maul (4 casts)',
+    item: 'Elder maul',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'crush', accMult: 1.25, drains: true, maxCasts: 4,
+    note: 'Drains 35% of current Defence on hit.',
+    maxHit: (base) => base,
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      reduceDef(ctx, (cur) => cur - factor(cur, 35, 100));
+      return [uniformDamage(ctx, specMax)];
+    },
+  },
+  {
     id: 'elder_maul_hit',
     name: 'Elder maul (until 1 lands)',
     item: 'Elder maul',
@@ -414,6 +492,48 @@ export const SPECS: SpecDef[] = [
     name: 'Bandos godsword (1 cast)',
     item: 'Bandos godsword',
     cost: 50, speed: 6, type: 'melee', defStyle: 'slash', accMult: 2, drains: true, maxCasts: 1,
+    note: 'Drains Defence by the damage dealt.',
+    maxHit: (base) => factor(factor(base, 11, 10), 11, 10),
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      const dmg = uniformDamage(ctx, specMax);
+      reduceDef(ctx, (cur) => cur - dmg);
+      return [dmg];
+    },
+  },
+  {
+    id: 'bgs_2',
+    name: 'Bandos godsword (2 casts)',
+    item: 'Bandos godsword',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'slash', accMult: 2, drains: true, maxCasts: 2,
+    note: 'Drains Defence by the damage dealt.',
+    maxHit: (base) => factor(factor(base, 11, 10), 11, 10),
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      const dmg = uniformDamage(ctx, specMax);
+      reduceDef(ctx, (cur) => cur - dmg);
+      return [dmg];
+    },
+  },
+  {
+    id: 'bgs_3',
+    name: 'Bandos godsword (3 casts)',
+    item: 'Bandos godsword',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'slash', accMult: 2, drains: true, maxCasts: 3,
+    note: 'Drains Defence by the damage dealt.',
+    maxHit: (base) => factor(factor(base, 11, 10), 11, 10),
+    hits: (ctx, specMax) => {
+      if (!rollHit(ctx)) return [0];
+      const dmg = uniformDamage(ctx, specMax);
+      reduceDef(ctx, (cur) => cur - dmg);
+      return [dmg];
+    },
+  },
+  {
+    id: 'bgs_4',
+    name: 'Bandos godsword (4 casts)',
+    item: 'Bandos godsword',
+    cost: 50, speed: 6, type: 'melee', defStyle: 'slash', accMult: 2, drains: true, maxCasts: 4,
     note: 'Drains Defence by the damage dealt.',
     maxHit: (base) => factor(factor(base, 11, 10), 11, 10),
     hits: (ctx, specMax) => {

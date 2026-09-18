@@ -112,7 +112,7 @@ export default function App() {
   const [kills, setKills] = useState(1);
   const [bankingSeconds, setBankingSeconds] = useState(30);
   const [compareLightbearer, setCompareLightbearer] = useState(true);
-  const [partySize, setPartySize] = useState(1);
+  const [teamSize, setTeamSize] = useState(1);
 
   const [rows, setRows] = useState<SpecResult[] | null>(null);
   const [lbRows, setLbRows] = useState<SpecResult[] | null>(null);
@@ -205,12 +205,6 @@ export default function App() {
     ));
   }, [monsters]);
 
-  const hasCox = useMemo(() => {
-    return encounters.some(e => {
-      const m = monsters.find(m => monsterLabel(m) === e.monsterId);
-      return m?.attributes.includes('xerician');
-    });
-  }, [encounters, monsters]);
 
   /** Styles the equipped weapon actually offers. */
   const styles = useMemo(() => stylesFor(gear), [gear]);
@@ -410,9 +404,9 @@ export default function App() {
     // Convert EncounterDef to SimEncounter
     const simEncounters: SimEncounter[] = encounters.map(e => {
       let m = monsters.find(m => monsterLabel(m) === e.monsterId) ?? monsters[0];
-      // CoX HP scaling: floor(baseHp * (1 + (partySize - 1) * 0.5))
-      if (partySize > 1 && m.attributes.includes('xerician')) {
-        const scaledHp = Math.floor(m.hp * (1 + (partySize - 1) * 0.5));
+      // CoX HP scaling: floor(baseHp * (1 + (teamSize - 1) * 0.5))
+      if (teamSize > 1 && m.attributes.includes('xerician')) {
+        const scaledHp = Math.floor(m.hp * (1 + (teamSize - 1) * 0.5));
         m = { ...m, hp: scaledHp };
       }
       const t = tabs[e.styleTab];
@@ -458,8 +452,8 @@ export default function App() {
       if (lightbearer && lightbearerItem) {
         finalEncounters = encounters.map(e => {
           let m = monsters.find(m => monsterLabel(m) === e.monsterId) ?? monsters[0];
-          if (partySize > 1 && m.attributes.includes('xerician')) {
-            m = { ...m, hp: Math.floor(m.hp * (1 + (partySize - 1) * 0.5)) };
+          if (teamSize > 1 && m.attributes.includes('xerician')) {
+            m = { ...m, hp: Math.floor(m.hp * (1 + (teamSize - 1) * 0.5)) };
           }
           const t = tabs[e.styleTab];
           const setupForTab: SetupInput = {
@@ -494,7 +488,7 @@ export default function App() {
         encounters: finalEncounters,
         specIds: [...enabled],
         followUpSpecId,
-        opts: { ...baseOpts, lightbearer },
+        opts: { ...baseOpts, lightbearer, teamSize },
       };
     };
 
@@ -510,7 +504,7 @@ export default function App() {
   }, [
     monsters, encounters, tabs, levels, spells, buffs, equipment, enabled, resolvedSwitches,
     startEnergy, effectiveTrials, kills, bankingSeconds,
-    compareLightbearer, lightbearerItem, specOptions, partySize,
+    compareLightbearer, lightbearerItem, specOptions, teamSize,
   ]);
 
   const ranOnce = useRef(false);
@@ -934,15 +928,13 @@ export default function App() {
             </label>
           </div>
           <div className="row">
-            {hasCox && (
-              <label>
-                <span title="Scales CoX monster HP">CoX Party Size</span>
-                <input
-                  type="number" min={1} max={100} value={partySize}
-                  onChange={(e) => setPartySize(Math.max(1, Number(e.target.value) || 1))}
-                />
-              </label>
-            )}
+            <label>
+              <span title="Number of players attacking the monster. (Also scales CoX monster HP)">Team Size</span>
+              <input
+                type="number" min={1} max={100} value={teamSize}
+                onChange={(e) => setTeamSize(Math.max(1, Number(e.target.value) || 1))}
+              />
+            </label>
           </div>
 
           <label className="check">
