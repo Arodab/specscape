@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GearGrid, { ItemIcon, itemLabel } from './ui/GearGrid';
 import SwitchesModal, { type SwitchPreview } from './ui/SwitchesModal';
+import DistributionModal from './ui/DistributionModal';
 import {
   SLOTS, DEFAULT_AMMO, ammoFor, ammoKindFor, pickVariant,
   type Equip, type GearSet, type Slot,
 } from './sim/gear';
 import { PRESETS, parseGearRef } from './sim/presets';
-import { SPECS, type SpecDef } from './sim/specs';
+import { SPECS, specById, type SpecDef } from './sim/specs';
+import { enumeratePlans } from './sim/plans';
 import { drainLimit } from './sim/defenceFloors';
 import { accuracy, dps } from './sim/combat';
 import { isPoweredStaff, type Spell } from './sim/spells';
@@ -26,17 +28,32 @@ import {
   type SessionState, type EncounterDef, type TabKind
 } from './ui/session';
 import type { Monster, MonsterState, SpecResult, SimEncounter } from './sim/types';
-import type { SimRequest, SimResponse, SimVariant } from './worker/sim.worker';
+import { SimPool, type SimProgress, type SimVariant } from './ui/simPool';
 import monstersData from '../public/data/monsters.json';
 import equipmentData from '../public/data/equipment.json';
 import spellsData from '../public/data/spells.json';
 
 const monsterLabel = (m: Monster) => (m.version ? `${m.name} (${m.version})` : m.name);
 
+/**
+ * Drop spec ids that no longer exist. Saved sessions and share codes outlive
+ * the spec list, so an id retired by a later release would otherwise be
+ * simulated as "no spec" and show up as a duplicate baseline row.
+ */
+const knownSpecIds = (ids: readonly string[] | undefined): string[] =>
+  (ids ?? []).filter((id) => specById(id) !== undefined);
+
 const PRAYER_OPTIONS = [
   ['none', 'None'], ['chivalry', 'Chivalry'], ['piety', 'Piety'],
   ['eagleEye', 'Eagle Eye'], ['rigour', 'Rigour'], ['augury', 'Augury'],
 ] as const;
+
+/** What the search is doing right now, for the button and the empty state. */
+const progressLabel = (p: SimProgress | null): string => {
+  if (!p) return 'Simulating...';
+  const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
+  return p.stage === 'search' ? `Searching plans... ${pct}%` : `Refining best plans... ${pct}%`;
+};
 
 const stateOf = (m: Monster): MonsterState => ({
   hp: m.hp, def: m.def, magic: m.magic, baseDef: m.def, baseAtk: 0, baseStr: 0,
@@ -104,26 +121,29 @@ export default function App() {
 
   const [switches, setSwitches] = useState<SpecSwitches>({});
   const [editingSpec, setEditingSpec] = useState<SpecDef | null>(null);
+  /** Plan id whose kill-time distribution is open, if any. */
+  const [showDist, setShowDist] = useState<string | null>(null);
 
   const [enabled, setEnabled] = useState<Set<string>>(() => new Set(SPECS.map((s) => s.id)));
-  const [followUpSpecId, setFollowUpSpecId] = useState<string | null>(null);
   const [startEnergy, setStartEnergy] = useState(100);
   const [trials, setTrials] = useState(5000);
   const [kills, setKills] = useState(1);
   const [bankingSeconds, setBankingSeconds] = useState(30);
   const [compareLightbearer, setCompareLightbearer] = useState(true);
   const [teamSize, setTeamSize] = useState(1);
+  /** How many of the best setups the results table lists. */
+  const [topSetups, setTopSetups] = useState(10);
 
   const [rows, setRows] = useState<SpecResult[] | null>(null);
   const [lbRows, setLbRows] = useState<SpecResult[] | null>(null);
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<SimProgress | null>(null);
 
   const [saved, setSaved] = useState<SavedSetup[]>([]);
   const [setupName, setSetupName] = useState('');
   const [toast, setToast] = useState<string | null>(null);
 
-  const workerRef = useRef<Worker | null>(null);
-  const reqId = useRef(0);
+  const poolRef = useRef<SimPool | null>(null);
 
   // ---- data loading -------------------------------------------------------
   useEffect(() => {
@@ -141,19 +161,11 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // ---- worker -------------------------------------------------------------
+  // ---- worker pool --------------------------------------------------------
   useEffect(() => {
-    const w = new Worker(new URL('./worker/sim.worker.ts', import.meta.url), { type: 'module' });
-    w.onmessage = (ev: MessageEvent<SimResponse>) => {
-      if (ev.data.id !== reqId.current) return; // stale result
-      setRunning(false);
-      if (ev.data.ok) {
-        setRows(ev.data.results.normal ?? null);
-        setLbRows(ev.data.results.lightbearer ?? null);
-      }
-    };
-    workerRef.current = w;
-    return () => w.terminate();
+    const pool = new SimPool();
+    poolRef.current = pool;
+    return () => pool.terminate();
   }, []);
 
   // ---- derived ------------------------------------------------------------
@@ -280,6 +292,13 @@ export default function App() {
    * default preset when there is nothing remembered.
    */
   const restored = useRef(false);
+  /**
+   * Flipped in the same commit that writes the restored/default tabs, so the
+   * first simulation never runs against the empty initial gear. Without this
+   * gate the very first run() fired a render early - with no weapon equipped -
+   * and spent ~25s simulating unarmed kills whose result was then thrown away.
+   */
+  const [ready, setReady] = useState(false);
   useEffect(() => {
     if (!equipment.length || restored.current) return;
     restored.current = true;
@@ -312,6 +331,7 @@ export default function App() {
         ranged: buildTabFromPreset('max_ranged_tbow'),
         magic: buildTabFromPreset('max_magic_shadow'),
       });
+      setReady(true);
       return;
     }
 
@@ -334,14 +354,16 @@ export default function App() {
     if (prev.levels) setLevels(prev.levels);
     setBuffs(prev.buffs ?? DEFAULT_BUFFS);
     setSwitches(prev.switches ?? {});
-    if (prev.enabledSpecs?.length) setEnabled(new Set(prev.enabledSpecs));
-    if (prev.followUpSpecId !== undefined) setFollowUpSpecId(prev.followUpSpecId);
+    const restoredSpecs = knownSpecIds(prev.enabledSpecs);
+    if (restoredSpecs.length) setEnabled(new Set(restoredSpecs));
     if (typeof prev.startEnergy === 'number') setStartEnergy(prev.startEnergy);
     if (typeof prev.trials === 'number') setTrials(prev.trials);
     if (typeof prev.kills === 'number') setKills(prev.kills);
     if (typeof prev.bankingSeconds === 'number') setBankingSeconds(prev.bankingSeconds);
+    if (typeof prev.topSetups === 'number') setTopSetups(prev.topSetups);
     if (typeof prev.compareLightbearer === 'boolean') setCompareLightbearer(prev.compareLightbearer);
     setSetupName(prev.setupName ?? '');
+    setReady(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [equipment]);
 
@@ -362,16 +384,30 @@ export default function App() {
       lockedSlots: [...sharedSlots],
       levels, buffs, switches,
       enabledSpecs: [...enabled],
-      followUpSpecId,
-      startEnergy, trials, kills, bankingSeconds,
+      startEnergy, trials, kills, bankingSeconds, topSetups,
       compareLightbearer, setupName,
     };
     saveSession(state);
   }, [
     equipment.length, encounters, tabs, activeTab, sharedSlots, levels,
     buffs, switches, enabled, startEnergy, trials, kills,
-    bankingSeconds, compareLightbearer, setupName,
+    bankingSeconds, topSetups, compareLightbearer, setupName,
   ]);
+
+  /**
+   * Every combination worth simulating. The energy pool is what couples the two
+   * halves of a plan, so team size and starting energy decide how many drain
+   * casts are even on the table.
+   */
+  const killsPerTrip = useMemo(
+    () => encounters.reduce((sum, e) => sum + Math.max(1, e.count), 0) * Math.max(1, kills),
+    [encounters, kills],
+  );
+
+  const plans = useMemo(
+    () => enumeratePlans({ enabled, teamSize, startEnergy, killsPerTrip }),
+    [enabled, teamSize, startEnergy, killsPerTrip],
+  );
 
   const effectiveTrials = useMemo(
     () => Math.max(500, Math.round(trials / Math.max(1, kills))),
@@ -385,8 +421,8 @@ export default function App() {
   );
 
   const run = useCallback(() => {
-    const w = workerRef.current;
-    if (!w || !encounters.length) return;
+    const pool = poolRef.current;
+    if (!pool || !encounters.length) return;
 
     // Convert EncounterDef to SimEncounter
     const simEncounters: SimEncounter[] = encounters.map(e => {
@@ -473,8 +509,7 @@ export default function App() {
       return {
         key,
         encounters: finalEncounters,
-        specIds: [...enabled],
-        followUpSpecId,
+        plans,
         opts: { ...baseOpts, lightbearer, teamSize },
       };
     };
@@ -485,37 +520,48 @@ export default function App() {
     }
 
     setRunning(true);
-    reqId.current += 1;
-    const req: SimRequest = { id: reqId.current, variants };
-    w.postMessage(req);
+    setProgress(null);
+    pool.run(
+      variants,
+      (results) => {
+        setRunning(false);
+        setProgress(null);
+        setRows(results.normal ?? null);
+        setLbRows(results.lightbearer ?? null);
+      },
+      () => { setRunning(false); setProgress(null); },
+      setProgress,
+      topSetups,
+    );
   }, [
     monsters, encounters, tabs, levels, spells, buffs, equipment, enabled, resolvedSwitches,
-    startEnergy, effectiveTrials, kills, bankingSeconds,
+    startEnergy, effectiveTrials, kills, bankingSeconds, plans, topSetups,
     compareLightbearer, lightbearerItem, specOptions, teamSize,
   ]);
 
   const ranOnce = useRef(false);
-  useEffect(() => {
-    if (!ranOnce.current && encounters.length > 0 && equipment.length && restored.current) {
-      ranOnce.current = true;
-      run();
-    }
-  }, [encounters, equipment, run]);
 
   /**
-   * Re-run whenever the inputs change. `run` is rebuilt by useCallback on every
-   * relevant change, so depending on it is enough.
+   * The single simulation trigger: re-run whenever the inputs change. `run` is
+   * rebuilt by useCallback on every relevant change, so depending on it is enough.
    *
    * Without this the table silently goes stale: the headings react to state
    * immediately while the numbers still come from the previous run, so changing
    * kills-per-trip would show a "trip of 10 kills" heading over single-kill
    * results. The debounce coalesces typing into one simulation.
+   *
+   * `ready` gates the first run until the tabs hold real gear. This used to be
+   * two effects - an immediate first run plus this debounce - which fired the
+   * sim twice on load, the first time against an empty (unarmed) loadout whose
+   * kills take ~60x longer than a real one. Both runs queued on the single
+   * worker, so the user waited for the useless one to finish first.
    */
   useEffect(() => {
-    if (!ranOnce.current) return;
-    const t = setTimeout(() => run(), 450);
+    if (!ready || !encounters.length || !equipment.length) return;
+    const delay = ranOnce.current ? 450 : 0;
+    const t = setTimeout(() => { ranOnce.current = true; run(); }, delay);
     return () => clearTimeout(t);
-  }, [run]);
+  }, [ready, run, encounters.length, equipment.length]);
 
   // ---- handlers -----------------------------------------------------------
   const setSlot = (slot: Slot, item: Equip | null) => {
@@ -656,7 +702,7 @@ export default function App() {
 
   const currentShareable = () => ({
     encounters, tabs, activeTab, lockedSlots: [...sharedSlots],
-    levels, buffs, switches, enabledSpecs: [...enabled], followUpSpecId, specOptions,
+    levels, buffs, switches, enabledSpecs: [...enabled], specOptions,
     startEnergy, kills, bankingSeconds, compareLightbearer,
   });
 
@@ -698,8 +744,8 @@ export default function App() {
     setLevels(decoded.levels);
     setBuffs(decoded.buffs);
     setSwitches(decoded.switches);
-    if (decoded.enabledSpecs.length) setEnabled(new Set(decoded.enabledSpecs));
-    if (decoded.followUpSpecId !== undefined) setFollowUpSpecId(decoded.followUpSpecId);
+    const decodedSpecs = knownSpecIds(decoded.enabledSpecs);
+    if (decodedSpecs.length) setEnabled(new Set(decodedSpecs));
     if (Object.keys(decoded.specOptions).length) setSpecOptions(decoded.specOptions);
     setStartEnergy(decoded.startEnergy);
     setKills(decoded.kills);
@@ -714,12 +760,23 @@ export default function App() {
   );
 
   const lbById = useMemo(() => {
-    const map = new Map<string | null, SpecResult>();
-    for (const r of lbRows ?? []) map.set(r.specId, r);
+    const map = new Map<string, SpecResult>();
+    for (const r of lbRows ?? []) map.set(r.planId, r);
     return map;
   }, [lbRows]);
 
   const showLb = compareLightbearer && !!lbRows;
+
+  /**
+   * The baseline always leads, then the best `topSetups` plans. The search
+   * refines more than it shows, so trimming here costs nothing.
+   */
+  const shownRows = useMemo(() => {
+    if (!rows) return [];
+    const base = rows.filter((r) => r.planId === 'baseline');
+    const rest = rows.filter((r) => r.planId !== 'baseline').slice(0, topSetups);
+    return [...base, ...rest];
+  }, [rows, topSetups]);
 
   const limit = monster ? drainLimit(monster.name, monster.def) : null;
   const drainNote = monster && limit
@@ -899,6 +956,13 @@ export default function App() {
               />
             </label>
             <label>
+              <span>Setups to show</span>
+              <input
+                type="number" min={1} max={50} value={topSetups}
+                onChange={(e) => setTopSetups(Math.min(50, Math.max(1, Number(e.target.value) || 1)))}
+              />
+            </label>
+            <label>
               <span>Banking time (s, restores spec)</span>
               <input
                 type="number" min={0} max={900} value={bankingSeconds}
@@ -923,7 +987,7 @@ export default function App() {
             />
             Compare Lightbearer (swaps your ring, doubles spec regen)
           </label>
-          <button className="primary" style={{ marginTop: "16px", width: "100%" }} onClick={run} disabled={running || !encounters.length}>{running ? "Simulating..." : "Compare specs"}</button>
+          <button className="primary" style={{ marginTop: "16px", width: "100%" }} onClick={run} disabled={running || !encounters.length}>{running ? progressLabel(progress) : "Compare specs"}</button>
         </section>
       </div>
 
@@ -1042,7 +1106,11 @@ export default function App() {
 
 
           <section className="panel">
-            <h2>Specs to compare</h2>
+            <h2>Specs you own</h2>
+            <div className="help-text" style={{ marginBottom: '8px' }}>
+              Every enabled drain is tried at each affordable cast count against every
+              enabled damage spec. Results show the best combinations.
+            </div>
             <div className="checks">
               {SPECS.map((s) => (
                 <label key={s.id} className="check">
@@ -1064,21 +1132,6 @@ export default function App() {
                 {sp.option!.label}
               </label>
             ))}
-          </section>
-          <section className="panel">
-            <label className="field-group">
-              <span>Follow-up DPS spec</span>
-              <select
-                value={followUpSpecId ?? ''}
-                onChange={(e) => setFollowUpSpecId(e.target.value || null)}
-              >
-                <option value="">None (Main weapon only)</option>
-                {SPECS.filter(s => !s.drains).map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              <div className="help-text">Used to spend remaining energy if the primary spec finishes or misses.</div>
-            </label>
           </section>
 
         </div>
@@ -1115,7 +1168,11 @@ export default function App() {
                 ))}
               </div>
             )}
-          {!rows && <div className="empty">Pick a target and setup, then hit Compare specs.</div>}
+          {!rows && (
+            <div className="empty">
+              {running ? progressLabel(progress) : 'Pick a target and setup, then hit Compare specs.'}
+            </div>
+          )}
           {rows && (
             <table>
               <thead>
@@ -1134,30 +1191,41 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r_full, i) => {
+                {shownRows.map((r_full, i) => {
                   const r = resultTab >= 0 ? (r_full.breakdown?.[resultTab] ?? r_full) : r_full;
-                  const spec = SPECS.find((s) => s.id === r_full.specId);
-                  const isBaseline = r_full.specId === null;
+                  const isBaseline = r_full.planId === 'baseline';
                   const best = !isBaseline && i === 1 && r.secondsSaved > 0;
-                  const specItem = spec ? specWeaponItem(spec, equipment) : null;
-                  const overrideCount = spec ? Object.keys(switches[spec.id] ?? {}).length : 0;
-                  const lb_full = lbById.get(r_full.specId);
+                  // A plan equips up to two weapons: the drain opener, then the
+                  // damage spec it hands over to.
+                  const planSpecDefs = [r_full.drainId, r_full.dpsId]
+                    .filter((id): id is string => !!id)
+                    .map((id) => specById(id))
+                    .filter((d): d is SpecDef => !!d);
+                  const lb_full = lbById.get(r_full.planId);
                   const lb = lb_full && resultTab >= 0 ? (lb_full.breakdown?.[resultTab] ?? lb_full) : lb_full;
                   const dispMaxSaved = resultTab >= 0
                     ? Math.max(0, ...rows.map(rx => rx.breakdown?.[resultTab]?.secondsSaved ?? 0))
                     : maxSaved;
                   return (
-                    <tr key={r_full.specId ?? 'baseline'} className={isBaseline ? 'baseline' : best ? 'best' : ''}>
+                    <tr key={r_full.planId} className={isBaseline ? 'baseline' : best ? 'best' : ''}>
                       <td>
                         <div className="spec-cell">
-                          {specItem && (
-                            <span className="spec-icon" title={spec?.note ?? specItem.name}>
-                              <ItemIcon item={specItem} size={24} />
-                            </span>
-                          )}
-                          <span className="spec-name" title={spec?.note ?? undefined}>
-                            {r_full.specName}
-                          </span>
+                          {planSpecDefs.map((d) => {
+                            const item = specWeaponItem(d, equipment);
+                            return item ? (
+                              <span key={d.id} className="spec-icon" title={d.note ?? item.name}>
+                                <ItemIcon item={item} size={24} />
+                              </span>
+                            ) : null;
+                          })}
+                          <button
+                            className="spec-name link-name"
+                            title={`${planSpecDefs.map((d) => d.note).filter(Boolean).join(' ')}
+Click for the kill-time distribution`}
+                            onClick={() => setShowDist(r_full.planId)}
+                          >
+                            {r_full.planName}
+                          </button>
                         </div>
                       </td>
                       <td>{r.meanSeconds.toFixed(1)}s</td>
@@ -1189,15 +1257,23 @@ export default function App() {
                       )}
                       <td>{isBaseline ? '-' : r.meanSpecCasts.toFixed(1)}</td>
                       <td>
-                        {spec && (
-                          <button
-                            className="mini"
-                            title="Customise the switch for this spec"
-                            onClick={() => setEditingSpec(spec)}
-                          >
-                            switch{overrideCount ? ` (${overrideCount})` : ''}
-                          </button>
-                        )}
+                        {/* One button per weapon the plan equips, so each can be
+                            switched independently. */}
+                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                          {planSpecDefs.map((d) => {
+                            const n = Object.keys(switches[d.id] ?? {}).length;
+                            return (
+                              <button
+                                key={d.id}
+                                className="mini"
+                                title={`Customise the switch for ${d.name}`}
+                                onClick={() => setEditingSpec(d)}
+                              >
+                                {d.name.split(' ')[0]}{n ? ` (${n})` : ''}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1207,6 +1283,23 @@ export default function App() {
           )}
         </section>
       </div>
+
+      {showDist && rows && (() => {
+        const full = rows.find((r) => r.planId === showDist);
+        if (!full) return null;
+        const view = resultTab >= 0 && full.breakdown?.[resultTab]
+          ? { ...full, ...full.breakdown[resultTab] }
+          : full;
+        return (
+          <DistributionModal
+            row={view}
+            lb={lbById.get(showDist) ?? null}
+            baseline={rows.find((r) => r.planId === 'baseline') ?? null}
+            encounterName={resultTab >= 0 ? encounters[resultTab]?.monsterId ?? null : null}
+            onClose={() => setShowDist(null)}
+          />
+        );
+      })()}
 
       {editingSpec && (
         <SwitchesModal

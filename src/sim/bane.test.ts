@@ -44,9 +44,14 @@ describe('bane weapons', () => {
     expect(baneWeaponsFor(null)).toEqual([]);
   });
 
-  it('every entry declares at least one bonus', () => {
+  it('every entry either carries a bonus or is explicitly display-only', () => {
+    // Display-only entries (the salve amulet) exist so the picker can badge and
+    // pin them; their real multipliers live in modifiers.ts instead.
     for (const b of BANE_WEAPONS) {
-      expect(b.accuracy || b.damage, `${b.label} has a bonus`).toBeTruthy();
+      expect(
+        Boolean(b.accuracy || b.damage) !== Boolean(b.displayOnly),
+        `${b.label} is either a bonus or display-only, not both or neither`,
+      ).toBe(true);
       expect(b.attributes.length).toBeGreaterThan(0);
     }
   });

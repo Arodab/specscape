@@ -512,3 +512,27 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--bad); color: var(-
 
 
 
+
+/* ---------- distribution popup ---------- */
+.dist-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.dist-table th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--muted);
+  padding: 3px 8px 3px 0;
+  white-space: nowrap;
+}
+.dist-table td { text-align: right; padding: 3px 0; font-variant-numeric: tabular-nums; }
+
+/* A result row's name doubles as the button that opens its distribution. */
+.link-name {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px dotted var(--line);
+}
+.link-name:hover { color: var(--accent); border-bottom-color: var(--accent); }

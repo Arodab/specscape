@@ -152,33 +152,24 @@ describe('spec roster', () => {
     }
   });
 
-  it('gives the bone dagger a 100% accuracy opener that defaults on', () => {
+  it('always lands the bone dagger opener and drains by the damage dealt', () => {
     const bone = specById('bone_dagger')!;
-    expect(bone.option?.key).toBe('boneDaggerOpener');
-    expect(bone.option?.default).toBe(true);
     expect(bone.drains).toBe(true);
+    // `guaranteed` makes the simulation pass acc = 1, so the opener never rolls.
+    expect(bone.guaranteed).toBe(true);
+    expect(bone.maxCasts).toBe(1);
+    expect(bone.option).toBeUndefined();
 
     const state = { hp: 500, def: 200, magic: 100, baseDef: 200, baseAtk: 0, baseStr: 0 };
-    const ctx = {
-      load: {} as never, acc: 0, rng: mulberry32(4), state,
-      monsterName: 'x', isDemon: false, options: { boneDaggerOpener: true },
-    };
-    // acc is 0, so anything that lands proves the opener bypassed the roll.
-    const [dmg] = bone.hits(ctx, 40);
-    expect(dmg).toBeGreaterThanOrEqual(0);
-    expect(state.def).toBeLessThanOrEqual(200);
-
-    // With the opener off, a 0% accuracy roll must whiff and leave Defence alone.
-    const state2 = { hp: 500, def: 200, magic: 100, baseDef: 200, baseAtk: 0, baseStr: 0 };
-    const off = bone.hits(
+    const [dmg] = bone.hits(
       {
-        load: {} as never, acc: 0, rng: mulberry32(4), state: state2,
-        monsterName: 'x', isDemon: false, options: { boneDaggerOpener: false },
+        load: {} as never, acc: 1, rng: mulberry32(4), state,
+        monsterName: 'x', isDemon: false, options: {},
       },
       40,
     );
-    expect(off).toEqual([0]);
-    expect(state2.def).toBe(200);
+    expect(dmg).toBeGreaterThanOrEqual(0);
+    expect(state.def).toBe(200 - dmg);
   });
 
   it('scales the Volatile staff spec off Magic level', () => {

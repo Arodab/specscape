@@ -32,7 +32,7 @@ const sample = (): ShareableSetup => {
     buffs: { offTask: true },
     switches: { zcb: { neck: { name: 'Necklace of rupture', version: null } } },
     enabledSpecs: ['voidwaker', 'dwh'],
-    specOptions: { boneDaggerOpener: false },
+    specOptions: {},
     startEnergy: 75,
     kills: 12,
     downtimeSeconds: 5,
@@ -53,7 +53,9 @@ describe('share codes', () => {
     expect(decoded!.styleIndex).toBe(2);
     expect(decoded!.buffs.offTask).toBe(true);
     expect([...decoded!.enabledSpecs].sort()).toEqual(['dwh', 'voidwaker']);
-    expect(decoded!.specOptions.boneDaggerOpener).toBe(false);
+    // No spec declares a toggle right now, so this round-trips empty. The
+    // encoding still carries them, so a future toggle needs no format change.
+    expect(decoded!.specOptions).toEqual({});
     expect(decoded!.startEnergy).toBe(75);
     expect(decoded!.kills).toBe(12);
     expect(decoded!.downtimeSeconds).toBe(5);

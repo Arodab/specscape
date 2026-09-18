@@ -81,9 +81,40 @@ export interface SimOptions {
   specOptions: Record<string, boolean>;
 }
 
+/**
+ * The shape of a simulated kill-time distribution, in ticks.
+ *
+ * The mean is what the table ranks on, but it hides everything that matters
+ * about consistency: two plans can average the same and have completely
+ * different tails, which is the difference between a reliable kill and one
+ * that occasionally runs long.
+ */
+export interface DistStats {
+  samples: number;
+  mean: number;
+  median: number;
+  /** Population standard deviation. */
+  stdDev: number;
+  min: number;
+  max: number;
+  p5: number;
+  p10: number;
+  p25: number;
+  p75: number;
+  p90: number;
+  p95: number;
+  p99: number;
+}
+
 export interface SpecResult {
-  specId: string | null;
-  specName: string;
+  /** Stable id of the plan this row simulated (see sim/plans.ts). */
+  planId: string;
+  /** Human label, e.g. "Dragon warhammer x2 + Voidwaker". */
+  planName: string;
+  /** The drain opener this plan used, for icons and switch overrides. */
+  drainId: string | null;
+  /** The damage spec this plan used, for icons and switch overrides. */
+  dpsId: string | null;
   /** Mean ticks to kill. */
   meanTicks: number;
   medianTicks: number;
@@ -92,7 +123,7 @@ export interface SpecResult {
   /** Mean duration of a whole trip, including downtime between kills. */
   tripSeconds: number;
   /** Stats for each specific encounter in the sequence. */
-  breakdown?: Omit<SpecResult, 'specId' | 'specName' | 'breakdown'>[];
+  breakdown?: Omit<SpecResult, 'planId' | 'planName' | 'drainId' | 'dpsId' | 'breakdown'>[];
   /** Mean spec energy spent per kill. */
   energyUsed: number;
   /** Mean number of spec attacks over the whole trip. */
@@ -105,5 +136,7 @@ export interface SpecResult {
   secondsPer100Energy: number;
   /** Histogram of kill times in ticks, for the distribution view. */
   hist: { tick: number; count: number }[];
+  /** Full shape of the kill-time distribution, in ticks. */
+  stats: DistStats;
 }
 

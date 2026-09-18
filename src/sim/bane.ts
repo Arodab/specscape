@@ -19,6 +19,13 @@ export interface BaneWeapon {
   damage?: Factor;
   /** Shown as a badge in the item picker. */
   label: string;
+  /**
+   * Entries that exist only so the picker can badge and pin the item, with no
+   * multipliers of their own. The salve amulet is the case: it is a neck item,
+   * `baneFor` only ever inspects the weapon slot, and its real bonuses come from
+   * `detectSalve` in modifiers.ts. Giving it factors here would be dead config.
+   */
+  displayOnly?: boolean;
 }
 
 /** The data splits vampyres into tiers, but the bane gear does not care which. */
@@ -140,6 +147,7 @@ export const BANE_WEAPONS: BaneWeapon[] = [
     match: /^Salve amulet/i,
     attributes: ['undead'],
     label: 'undeadbane',
+    displayOnly: true,
   },
 ];
 
