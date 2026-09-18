@@ -27,8 +27,9 @@ import {
 } from './ui/session';
 import type { Monster, MonsterState, SpecResult, SimEncounter } from './sim/types';
 import type { SimRequest, SimResponse, SimVariant } from './worker/sim.worker';
-
-const BASE = import.meta.env.BASE_URL;
+import monstersData from '../public/data/monsters.json';
+import equipmentData from '../public/data/equipment.json';
+import spellsData from '../public/data/spells.json';
 
 const monsterLabel = (m: Monster) => (m.version ? `${m.name} (${m.version})` : m.name);
 
@@ -46,7 +47,6 @@ export default function App() {
   const [equipment, setEquipment] = useState<Equip[]>([]);
   const [spells, setSpells] = useState<Spell[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dataError, setDataError] = useState<string | null>(null);
 
   const [encounters, setEncounters] = useState<EncounterDef[]>([{ id: crypto.randomUUID(), monsterId: DEFAULT_MONSTER, styleTab: 'melee', count: 1, downtimeSeconds: 0 }]);
   const loadPreset = (preset: 'toa' | 'tob' | 'cox') => {
@@ -127,23 +127,10 @@ export default function App() {
 
   // ---- data loading -------------------------------------------------------
   useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      fetch(`${BASE}data/monsters.json`).then((r) => r.json()),
-      fetch(`${BASE}data/equipment.json`).then((r) => r.json()),
-      fetch(`${BASE}data/spells.json`).then((r) => r.json()),
-    ])
-      .then(([m, e, sp]) => {
-        if (cancelled) return;
-        setMonsters(m);
-        setEquipment(e);
-        setSpells(sp);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (!cancelled) { setDataError(String(err)); setLoading(false); }
-      });
-    return () => { cancelled = true; };
+    setMonsters(monstersData as unknown as Monster[]);
+    setEquipment(equipmentData as Equip[]);
+    setSpells(spellsData as Spell[]);
+    setLoading(false);
   }, []);
 
   useEffect(() => { setSaved(listSetups()); }, []);
@@ -744,14 +731,6 @@ export default function App() {
     : null;
 
   if (loading) return <div className="app"><p>Loading game data...</p></div>;
-  if (dataError) {
-    return (
-      <div className="app">
-        <p>Could not load game data: {dataError}</p>
-        <p>Run <code>npm run data</code> to fetch it.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="app">
